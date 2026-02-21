@@ -1,0 +1,253 @@
+{
+  "name": "gaussian-copilot",
+  "displayName": "Gaussian Copilot",
+  "description": "Gaussian .log/.out visualization and .gjf submission copilot for computational chemistry",
+  "version": "0.1.0",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:chemAssist.visualizeLog",
+    "onCommand:chemAssist.submitGjf",
+    "onCommand:chemAssist.batchSubmitGjf",
+    "onCommand:chemAssist.batchVisualizeLog",
+    "onCommand:chemAssist.applyGjfTemplate",
+    "onCommand:chemAssist.refreshJobs",
+    "onCommand:chemAssist.cancelJob",
+    "onCommand:chemAssist.removeJob",
+    "onCommand:chemAssist.clearFinishedJobs",
+    "onCommand:chemAssist.openJobOutput",
+    "onView:chemAssist.jobView"
+  ],
+  "main": "./dist/extension.js",
+  "icon": "media/icon-gaussian-copilot.png",
+  "contributes": {
+    "commands": [
+      {
+        "command": "chemAssist.visualizeLog",
+        "title": "可视化此log"
+      },
+      {
+        "command": "chemAssist.submitGjf",
+        "title": "提交此gjf"
+      },
+      {
+        "command": "chemAssist.batchSubmitGjf",
+        "title": "Gaussian Copilot: 提交选中gjf文件"
+      },
+      {
+        "command": "chemAssist.batchVisualizeLog",
+        "title": "Gaussian Copilot: 可视化选中log文件"
+      },
+      {
+        "command": "chemAssist.applyGjfTemplate",
+        "title": "应用GJF模板"
+      },
+      {
+        "command": "chemAssist.refreshJobs",
+        "title": "刷新作业状态"
+      },
+      {
+        "command": "chemAssist.cancelJob",
+        "title": "杀掉此作业"
+      },
+      {
+        "command": "chemAssist.removeJob",
+        "title": "删除此作业"
+      },
+      {
+        "command": "chemAssist.clearFinishedJobs",
+        "title": "清理已结束作业"
+      },
+      {
+        "command": "chemAssist.openJobOutput",
+        "title": "可视化对应log/out"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "chemAssist.jobView",
+          "name": "Gaussian Copilot 作业"
+        }
+      ]
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "chemAssist.visualizeLog",
+          "group": "navigation@10",
+          "when": "resourceExtname == .log || resourceExtname == .out"
+        },
+        {
+          "command": "chemAssist.submitGjf",
+          "group": "navigation@11",
+          "when": "resourceExtname == .gjf"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "chemAssist.applyGjfTemplate",
+          "when": "resourceExtname == .gjf"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "chemAssist.batchSubmitGjf",
+          "when": "!explorerResourceIsFolder && resourceExtname == .gjf",
+          "group": "navigation@20"
+        },
+        {
+          "command": "chemAssist.batchVisualizeLog",
+          "when": "!explorerResourceIsFolder && (resourceExtname == .log || resourceExtname == .out)",
+          "group": "navigation@21"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "chemAssist.refreshJobs",
+          "when": "view == chemAssist.jobView",
+          "group": "navigation"
+        },
+        {
+          "command": "chemAssist.clearFinishedJobs",
+          "when": "view == chemAssist.jobView",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "chemAssist.cancelJob",
+          "when": "view == chemAssist.jobView && viewItem == chemAssistJobItem"
+        },
+        {
+          "command": "chemAssist.openJobOutput",
+          "when": "view == chemAssist.jobView && viewItem == chemAssistJobItem"
+        },
+        {
+          "command": "chemAssist.removeJob",
+          "when": "view == chemAssist.jobView && viewItem == chemAssistJobItem"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Gaussian Copilot",
+      "properties": {
+        "chemAssist.submit.runCommandTemplate": {
+          "type": "string",
+          "default": "g16 {file}",
+          "description": "Run submit command template. Supported placeholders: {file}, {basename}, {dir}."
+        },
+        "chemAssist.submit.preCommands": {
+          "type": "array",
+          "default": [
+            "source /etc/profile"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Commands to run before submit command (e.g. module load gaussian)."
+        },
+        "chemAssist.pbs.queue": {
+          "type": "string",
+          "default": "",
+          "description": "PBS queue name."
+        },
+        "chemAssist.pbs.nodes": {
+          "type": "number",
+          "default": 1,
+          "description": "PBS nodes value."
+        },
+        "chemAssist.pbs.ppn": {
+          "type": "number",
+          "default": 8,
+          "description": "PBS ppn value."
+        },
+        "chemAssist.pbs.walltime": {
+          "type": "string",
+          "default": "48:00:00",
+          "description": "PBS walltime (HH:MM:SS)."
+        },
+        "chemAssist.pbs.mem": {
+          "type": "string",
+          "default": "16gb",
+          "description": "PBS memory setting, e.g. 16gb."
+        },
+        "chemAssist.parser.maxFrames": {
+          "type": "number",
+          "default": 500,
+          "description": "Maximum number of coordinate frames kept in memory."
+        },
+        "chemAssist.templates.custom": {
+          "type": "array",
+          "default": [],
+          "description": "Custom .gjf templates.",
+          "items": {
+            "type": "object"
+          }
+        },
+        "chemAssist.jobs.autoRefreshSeconds": {
+          "type": "number",
+          "default": 60,
+          "description": "Auto refresh interval for job status in seconds. Set 0 to disable."
+        },
+        "chemAssist.viewer.backgroundColor": {
+          "type": "string",
+          "default": "white",
+          "description": "3D viewer background color (CSS color), e.g. white, black, #f8fafc."
+        },
+        "chemAssist.viewer.style": {
+          "type": "string",
+          "enum": [
+            "ballStick",
+            "stick",
+            "sphere",
+            "line"
+          ],
+          "default": "ballStick",
+          "description": "Default 3D rendering style."
+        },
+        "chemAssist.viewer.stickRadius": {
+          "type": "number",
+          "default": 0.18,
+          "description": "Stick radius for 3D model rendering."
+        },
+        "chemAssist.viewer.sphereScale": {
+          "type": "number",
+          "default": 0.25,
+          "description": "Sphere scale for 3D model rendering."
+        },
+        "chemAssist.viewer.vibrationFps": {
+          "type": "number",
+          "default": 10,
+          "description": "Vibration animation FPS."
+        },
+        "chemAssist.viewer.maxDisplayedFrequencies": {
+          "type": "number",
+          "default": 180,
+          "description": "Maximum number of frequencies shown in list/select."
+        },
+        "chemAssist.viewer.autoZoomOnFrameChange": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto zoom model when switching structure frames."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "@types/vscode": "^1.90.0",
+    "3dmol": "^2.5.4",
+    "echarts": "^6.0.0",
+    "typescript": "^5.6.2"
+  }
+}

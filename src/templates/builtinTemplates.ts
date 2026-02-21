@@ -1,0 +1,45 @@
+import { BuiltinTemplate } from './types';
+
+export const builtinTemplates: BuiltinTemplate[] = [
+  {
+    id: 'opt',
+    name: 'OPT 优化',
+    description: '几何优化任务模板',
+    link0: ['%nprocshared={{nproc}}', '%mem={{mem}}', '%chk={{chk}}'],
+    route: '#p {{method}}/{{basis}} opt',
+    title: 'Optimization',
+    chargeMultiplicity: '{{charge}} {{multiplicity}}',
+    coordinatesPlaceholder: '{{coordinates}}',
+  },
+  {
+    id: 'freq',
+    name: 'FREQ 频率',
+    description: '频率分析模板',
+    link0: ['%nprocshared={{nproc}}', '%mem={{mem}}', '%chk={{chk}}'],
+    route: '#p {{method}}/{{basis}} freq',
+    title: 'Frequency',
+    chargeMultiplicity: '{{charge}} {{multiplicity}}',
+    coordinatesPlaceholder: '{{coordinates}}',
+  },
+  {
+    id: 'sol',
+    name: 'SOL 溶剂模型',
+    description: '含 SMD 溶剂模型模板',
+    link0: ['%nprocshared={{nproc}}', '%mem={{mem}}', '%chk={{chk}}'],
+    route: '#p {{method}}/{{basis}} opt freq scrf=(smd,solvent={{solvent}})',
+    title: 'Solution phase task',
+    chargeMultiplicity: '{{charge}} {{multiplicity}}',
+    coordinatesPlaceholder: '{{coordinates}}',
+  },
+  {
+    id: 'ts',
+    name: 'TS 过渡态',
+    description: '过渡态搜索模板',
+    link0: ['%nprocshared={{nproc}}', '%mem={{mem}}', '%chk={{chk}}'],
+    route: '#p {{method}}/{{basis}} opt=(ts,calcfc,noeigentest) freq',
+    title: 'Transition state',
+    chargeMultiplicity: '{{charge}} {{multiplicity}}',
+    coordinatesPlaceholder: '{{coordinates}}',
+    tail: '{{ecpTail}}',
+  },
+];
