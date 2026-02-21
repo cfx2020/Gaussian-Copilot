@@ -2,8 +2,21 @@
   "name": "gaussian-copilot",
   "displayName": "Gaussian Copilot",
   "description": "Gaussian .log/.out visualization and .gjf submission copilot for computational chemistry",
+  "keywords": [
+    "gaussian",
+    "computational chemistry",
+    "chemistry",
+    "gjf",
+    "log visualization",
+    "pbs"
+  ],
   "version": "0.1.0",
   "publisher": "linsay",
+  "license": "MIT",
+  "homepage": "https://github.com/cfx2020/Gaussian-Copilot",
+  "bugs": {
+    "url": "https://github.com/cfx2020/Gaussian-Copilot/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/cfx2020/Gaussian-Copilot.git"
@@ -12,7 +25,15 @@
     "vscode": "^1.90.0"
   },
   "categories": [
-    "Other"
+    "Data Science",
+    "Visualization"
+  ],
+  "files": [
+    "dist/**",
+    "media/**",
+    "README.md",
+    "LICENSE",
+    "package.json"
   ],
   "activationEvents": [
     "onCommand:chemAssist.visualizeLog",
