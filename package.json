@@ -3,7 +3,11 @@
   "displayName": "Gaussian Copilot",
   "description": "Gaussian .log/.out visualization and .gjf submission copilot for computational chemistry",
   "version": "0.1.0",
-  "publisher": "local",
+  "publisher": "linsay",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cfx2020/Gaussian-Copilot.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
