@@ -1,4 +1,4 @@
-# Gaussian Copilot
+# 🧪 Gaussian Copilot
 
 Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.out` 可视化、批量操作与作业跟踪。
 
@@ -6,7 +6,7 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 
 把“写输入文件 → 提交计算 → 看结果 → 回溯批次”放在一个编辑器里完成，减少命令行和文件管理的来回切换。
 
-## Features
+## ✨ Features
 
 ### 1) 一键提交与可视化
 - 编辑器右上角：
@@ -34,7 +34,7 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 - 单击作业项即可跳转对应 `.log/.out`
 - 作业右键可直接“可视化对应log/out”
 
-## Quick Start
+## 🚀 Quick Start
 
 1. 安装扩展并打开你的 Gaussian 工作目录。
 2. 打开设置，配置提交命令模板：
@@ -53,7 +53,7 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 3. 打开任意 `.gjf`，点击右上角 **提交此gjf**。
 4. 在侧边栏 **Gaussian Copilot 作业** 中查看状态和历史批次。
 
-## Configuration
+## ⚙️ Configuration
 
 ### Submit
 - `chemAssist.submit.runCommandTemplate`：提交命令模板（占位符：`{file}`、`{basename}`、`{dir}`）
@@ -77,7 +77,7 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 ### Templates
 - `chemAssist.templates.custom`：自定义 `.gjf` 模板
 
-## Typical Workflow
+## 🔄 Typical Workflow
 
 1. 用模板生成/编辑 `.gjf`
 2. 单个或批量提交作业
@@ -85,7 +85,7 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 4. 单击作业快速打开结果
 5. 进入可视化面板检查几何、频率和能量变化
 
-## Notes
+## 📝 Notes
 
 - 推荐在 Linux / 集群环境中使用（如 CentOS + PBS）。
 - 若使用 alias（例如 `gsub`），请确保扩展运行环境可访问该命令。
