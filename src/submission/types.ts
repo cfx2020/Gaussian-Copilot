@@ -28,10 +28,17 @@ export interface JobStatusResult {
   stderr: string;
 }
 
+export interface SchedulerJobSummary {
+  id: string;
+  name: string;
+  state: JobState;
+}
+
 export interface Submitter {
   submit(request: SubmitRequest): Promise<SubmitResult>;
   query(jobId: string): Promise<JobStatusResult>;
   cancel(jobId: string): Promise<JobStatusResult>;
+  listUserJobs(username: string): Promise<SchedulerJobSummary[]>;
 }
 
 export class SubmitError extends Error {

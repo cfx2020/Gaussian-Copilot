@@ -1,7 +1,7 @@
 import { exec } from 'child_process';
 import * as path from 'path';
 import { ChemAssistSettings } from '../config/settings';
-import { JobStatusResult, SubmitRequest, SubmitResult, Submitter } from './types';
+import { JobStatusResult, SchedulerJobSummary, SubmitRequest, SubmitResult, Submitter } from './types';
 
 function renderCommand(template: string, req: SubmitRequest): string {
   const dir = path.dirname(req.localFilePath);
@@ -53,6 +53,53 @@ function runCommand(command: string, cwd?: string): Promise<{ stdout: string; st
       resolve({ stdout, stderr });
     });
   });
+}
+
+function parseQstatUserOutput(stdout: string): SchedulerJobSummary[] {
+  const lines = stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => !!line);
+
+  const jobs: SchedulerJobSummary[] = [];
+  const seen = new Set<string>();
+
+  for (const line of lines) {
+    if (/^job\s+id/i.test(line) || /^-+$/.test(line)) {
+      continue;
+    }
+
+    const columns = line.split(/\s+/);
+    if (columns.length < 4) {
+      continue;
+    }
+
+    const id = columns[0];
+    if (!/^\d+(\.[\w.-]+)?$/.test(id)) {
+      continue;
+    }
+
+    if (seen.has(id)) {
+      continue;
+    }
+
+    const name = columns[3] ?? id;
+    let rawState = '';
+    for (let i = columns.length - 1; i >= 0; i -= 1) {
+      if (/^[A-Z]$/.test(columns[i])) {
+        rawState = columns[i];
+        break;
+      }
+    }
+    jobs.push({
+      id,
+      name,
+      state: normalizePbsState(rawState),
+    });
+    seen.add(id);
+  }
+
+  return jobs;
 }
 
 export class LocalSubmitter implements Submitter {
@@ -138,5 +185,14 @@ export class LocalSubmitter implements Submitter {
       stdout: result.stdout,
       stderr: result.stderr,
     };
+  }
+
+  async listUserJobs(username: string): Promise<SchedulerJobSummary[]> {
+    if (!username.trim()) {
+      return [];
+    }
+
+    const result = await runCommand(`qstat -u ${username}`);
+    return parseQstatUserOutput(result.stdout);
   }
 }

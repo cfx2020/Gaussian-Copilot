@@ -16,6 +16,7 @@ export interface ChemAssistSettings {
   };
   jobs: {
     autoRefreshSeconds: number;
+    username: string;
   };
   viewer: {
     backgroundColor: string;
@@ -46,6 +47,7 @@ export function getSettings(): ChemAssistSettings {
     },
     jobs: {
       autoRefreshSeconds: cfg.get<number>('jobs.autoRefreshSeconds', 60),
+      username: cfg.get<string>('jobs.username', ''),
     },
     viewer: {
       backgroundColor: cfg.get<string>('viewer.backgroundColor', 'white'),

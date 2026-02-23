@@ -26,13 +26,15 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 
 ### 4) 作业时间线与状态跟踪
 - 按时间批次分组显示提交记录
+- 自动识别 `qstat -u <username>` 中该用户已在队列中的作业（含安装插件前提交的作业）
 - 状态显示：排队中 / 运行中 / 已完成 / 失败 / 已取消
 - 失败作业可显示原因摘要（如 L9999、SCF 不收敛等）
-- 支持杀作业、删除单条、清理已结束作业
+- 支持杀作业、重新提交选中 `.gjf`、删除单条、清理已结束作业
 
 ### 5) 作业结果快速定位
 - 单击作业项即可跳转对应 `.log/.out`
 - 作业右键可直接“可视化对应log/out”
+- 作业右键支持“可视化选中log/out”“打开选中gjf”
 
 ## 🚀 Quick Start
 
@@ -51,7 +53,11 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 - `bash /path/to/gsub.sh {file}`
 
 3. 打开任意 `.gjf`，点击右上角 **提交此gjf**。
-4. 在侧边栏 **Gaussian Copilot 作业** 中查看状态和历史批次。
+4. 在侧边栏 **Gaussian 作业看板** 中查看状态和历史批次。
+
+## 📦 Release Notes
+
+详见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## ⚙️ Configuration
 
@@ -61,6 +67,7 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 
 ### Job View
 - `chemAssist.jobs.autoRefreshSeconds`：作业状态自动刷新间隔（秒，`0` 表示关闭）
+- `chemAssist.jobs.username`：用于 `qstat -u` 的用户名；留空时自动从 `USER/LOGNAME/USERNAME` 推断
 
 ### Parser
 - `chemAssist.parser.maxFrames`：解析时保留的最大结构帧数

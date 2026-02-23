@@ -241,8 +241,16 @@ export function activate(context: vscode.ExtensionContext): void {
   const jobsProvider = new JobTreeProvider(context);
 
   context.subscriptions.push(jobsProvider);
-  const jobTreeView = vscode.window.createTreeView('chemAssist.jobView', { treeDataProvider: jobsProvider });
+  const jobTreeView = vscode.window.createTreeView('chemAssist.jobView', {
+    treeDataProvider: jobsProvider,
+    canSelectMany: true,
+  });
   context.subscriptions.push(jobTreeView);
+
+  void jobsProvider.refreshStatuses().catch((e: unknown) => {
+    const message = e instanceof Error ? e.message : String(e);
+    logError(`Initial refresh jobs failed: ${message}`);
+  });
 
   context.subscriptions.push(
     jobTreeView.onDidChangeSelection(async (event) => {
@@ -315,12 +323,75 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('chemAssist.openJobOutput', async (item: unknown) => {
-      const uri = await jobsProvider.resolveOutputFileUri(item);
-      if (!uri) {
+      const selected = jobTreeView.selection.filter((entry) => (entry as { contextValue?: string }).contextValue === 'chemAssistJobItem');
+      const targets = selected.length > 0 ? selected : [item];
+
+      const uris: vscode.Uri[] = [];
+      for (const target of targets) {
+        const uri = await jobsProvider.resolveOutputFileUri(target);
+        if (uri) {
+          uris.push(uri);
+        }
+      }
+
+      if (!uris.length) {
         warn('未找到对应的 .log/.out 文件。');
         return;
       }
-      await handleVisualize(uri);
+
+      if (uris.length === 1) {
+        await handleVisualize(uris[0]);
+        return;
+      }
+
+      await handleBatchVisualize(uris);
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chemAssist.openJobGjf', async (item: unknown) => {
+      const selected = jobTreeView.selection.filter((entry) => (entry as { contextValue?: string }).contextValue === 'chemAssistJobItem');
+      const targets = selected.length > 0 ? selected : [item];
+
+      const uris: vscode.Uri[] = [];
+      for (const target of targets) {
+        const uri = await jobsProvider.resolveInputFileUri(target);
+        if (uri) {
+          uris.push(uri);
+        }
+      }
+
+      if (!uris.length) {
+        warn('未找到对应的 .gjf 文件。');
+        return;
+      }
+
+      for (const uri of uris) {
+        const doc = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(doc, { preview: false });
+      }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chemAssist.resubmitJob', async (item: unknown) => {
+      const selected = jobTreeView.selection.filter((entry) => (entry as { contextValue?: string }).contextValue === 'chemAssistJobItem');
+      const targets = selected.length > 0 ? selected : [item];
+
+      const uris: vscode.Uri[] = [];
+      for (const target of targets) {
+        const uri = await jobsProvider.resolveInputFileUri(target);
+        if (uri) {
+          uris.push(uri);
+        }
+      }
+
+      if (!uris.length) {
+        warn('未找到可重新提交的 .gjf 文件。');
+        return;
+      }
+
+      await handleBatchSubmit(context, jobsProvider, uris);
     }),
   );
 

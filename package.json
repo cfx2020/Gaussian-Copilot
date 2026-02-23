@@ -10,7 +10,7 @@
     "log visualization",
     "pbs"
   ],
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "linsay",
   "license": "MIT",
   "homepage": "https://github.com/cfx2020/Gaussian-Copilot",
@@ -78,7 +78,7 @@
       },
       {
         "command": "chemAssist.cancelJob",
-        "title": "杀掉此作业"
+        "title": "⚠ 杀掉此作业"
       },
       {
         "command": "chemAssist.removeJob",
@@ -90,14 +90,22 @@
       },
       {
         "command": "chemAssist.openJobOutput",
-        "title": "可视化对应log/out"
+        "title": "可视化选中log/out"
+      },
+      {
+        "command": "chemAssist.openJobGjf",
+        "title": "打开选中gjf"
+      },
+      {
+        "command": "chemAssist.resubmitJob",
+        "title": "重新提交选中gjf"
       }
     ],
     "views": {
       "explorer": [
         {
           "id": "chemAssist.jobView",
-          "name": "Gaussian Copilot 作业"
+          "name": "Gaussian 作业看板"
         }
       ]
     },
@@ -147,15 +155,28 @@
       "view/item/context": [
         {
           "command": "chemAssist.cancelJob",
-          "when": "view == chemAssist.jobView && viewItem == chemAssistJobItem"
+          "when": "view == chemAssist.jobView && viewItem == chemAssistJobItem",
+          "group": "navigation@5"
         },
         {
           "command": "chemAssist.openJobOutput",
-          "when": "view == chemAssist.jobView && viewItem == chemAssistJobItem"
+          "when": "view == chemAssist.jobView && viewItem == chemAssistJobItem",
+          "group": "navigation@2"
+        },
+        {
+          "command": "chemAssist.resubmitJob",
+          "when": "view == chemAssist.jobView && viewItem == chemAssistJobItem",
+          "group": "navigation@3"
         },
         {
           "command": "chemAssist.removeJob",
-          "when": "view == chemAssist.jobView && viewItem == chemAssistJobItem"
+          "when": "view == chemAssist.jobView && viewItem == chemAssistJobItem",
+          "group": "navigation@4"
+        },
+        {
+          "command": "chemAssist.openJobGjf",
+          "when": "view == chemAssist.jobView && viewItem == chemAssistJobItem",
+          "group": "navigation@1"
         }
       ]
     },
@@ -219,6 +240,11 @@
           "type": "number",
           "default": 60,
           "description": "Auto refresh interval for job status in seconds. Set 0 to disable."
+        },
+        "chemAssist.jobs.username": {
+          "type": "string",
+          "default": "",
+          "description": "Scheduler username used by qstat -u <username>. Leave empty to auto-detect from USER/LOGNAME/USERNAME."
         },
         "chemAssist.viewer.backgroundColor": {
           "type": "string",
