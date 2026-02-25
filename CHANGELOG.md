@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.3.0] - 2026-02-25
+
+### Added
+- 可视化右侧面板新增 `Next` 标签页，支持一键生成后续计算输入文件：
+  - 从当前帧进行 TS（`calcfc`）
+  - 从当前帧进行 TS（`readfc` / `guess=read geom=check`）
+  - Sol（SMD）
+  - IRC 路径验证
+- Sol 支持常用溶剂下拉与“自定义溶剂”输入。
+- 作业看板新增右键命令：`下载选中log/out`。
+
+### Changed
+- Next 生成规则增强：
+  - `%chk` 与输出文件名自动保持一致。
+  - Sol 在 `smd/` 子目录生成同名输入，并自动写入 `%oldchk=../<name>.chk`。
+  - IRC 与 TS(readfc) 自动写入 `%oldchk=<name>.chk`。
+  - Sol 自动进行常见基组升级（如 `6-31G* -> 6-311++G**`，`lanl2dz -> SDD`）。
+  - 统一过滤 fix/modredundant 约束行，避免被错误继承到 TS/Sol/IRC。
+  - 生成前支持预览确认，并可选择“不再显示预览”。
+- 下载流程优化：
+  - 优先从服务器拉取输出文件到本机。
+  - 单文件下载使用本机“另存为”；多文件下载首个文件“另存为”，其余自动保存到同目录。
+
+### Fixed
+- 修复多选下载时路径上下文导致只落首个文件的问题。
+- 修复 Next 生成输入文件末尾空行不足的问题（统一保证结尾至少两行空白）。
+
+### Performance
+- 减少 Webview 中重复 `resize/zoom/render` 调用，改为调度式刷新，降低频繁重绘开销。
+- 移除日志解析中重复的 Gibbs 自由能正则匹配，减少重复扫描。
+- 清理 `package.json` 冗余 `activationEvents` 配置。
+
 ## [0.2.0] - 2026-02-23
 
 ### Added

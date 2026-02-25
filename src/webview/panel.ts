@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { GaussianSummary } from '../parser/types';
 
 export interface ViewerRenderOptions {
@@ -12,6 +14,323 @@ export interface ViewerRenderOptions {
 }
 
 const symbols = ['', 'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na', 'Mg', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar', 'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn', 'Ga', 'Ge', 'As', 'Se', 'Br', 'Kr', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Sb', 'Te', 'I', 'Xe', 'Cs', 'Ba', 'La', 'Ce', 'Pr', 'Nd', 'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb', 'Lu', 'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg'];
+
+interface GjfTemplateInfo {
+  link0: string[];
+  route: string;
+  title: string;
+  chargeMultiplicity: string;
+  basisTail: string;
+}
+
+interface NextInputPlan {
+  outputPath: string;
+  route: string;
+  chkName: string;
+  oldChkValue?: string;
+  content: string;
+}
+
+function normalizeSpaces(input: string): string {
+  return input.replace(/\s+/g, ' ').trim();
+}
+
+function removeRouteKeywords(routeBody: string, names: string[]): string {
+  let text = routeBody;
+  for (const name of names) {
+    const regex = new RegExp(`\\b${name}\\b(?:\\s*=\\s*(?:\\([^)]*\\)|[^\\s]+))?`, 'ig');
+    text = text.replace(regex, ' ');
+  }
+  return normalizeSpaces(text);
+}
+
+function ensureRoutePrefix(route: string): { prefix: string; body: string } {
+  const trimmed = route.trim();
+  const match = trimmed.match(/^(#\S*)(?:\s+(.*))?$/i);
+  if (!match) {
+    return { prefix: '#p', body: normalizeSpaces(trimmed) };
+  }
+  return {
+    prefix: match[1],
+    body: normalizeSpaces(match[2] ?? ''),
+  };
+}
+
+function buildRoute(route: string, kind: 'ts' | 'sol' | 'irc', solvent?: string): string {
+  const { prefix, body } = ensureRoutePrefix(route || '#p');
+  if (kind === 'ts') {
+    const kept = removeRouteKeywords(body, ['opt', 'guess', 'geom']);
+    const combined = normalizeSpaces(`${kept} opt=(calcfc,ts,nofreeze,noeigentest)`);
+    return `${prefix} ${combined}`.trim();
+  }
+
+  if (kind === 'sol') {
+    const kept = removeRouteKeywords(body, ['opt', 'freq', 'irc', 'scrf', 'guess', 'geom']);
+    const sol = solvent && solvent.trim() ? solvent.trim() : 'water';
+    const combined = normalizeSpaces(`${kept} scrf=(smd,solvent=${sol}) guess=read geom=check`);
+    return `${prefix} ${combined}`.trim();
+  }
+
+  const kept = removeRouteKeywords(body, ['opt', 'freq', 'irc', 'scrf', 'guess', 'geom']);
+  const combined = normalizeSpaces(`${kept} irc=(maxpoints=200,maxcyc=500,rcfc,LQA) guess=read geom=check`);
+  return `${prefix} ${combined}`.trim();
+}
+
+function buildReadTsRoute(route: string): string {
+  const { prefix, body } = ensureRoutePrefix(route || '#p');
+  const kept = removeRouteKeywords(body, ['opt', 'guess', 'geom']);
+  const combined = normalizeSpaces(`${kept} opt=(readfc,ts,nofreeze,noeigentest) guess=read geom=check`);
+  return `${prefix} ${combined}`.trim();
+}
+
+function routeHasGenLikeBasis(route: string): boolean {
+  const { body } = ensureRoutePrefix(route || '#p');
+  return /\/(gen|genecp)\b/i.test(body);
+}
+
+function looksLikeModredundantLine(line: string): boolean {
+  return /^\s*[BADXL]\s+\d+/i.test(line.trim());
+}
+
+function extractBasisTailFromTail(tail: string): string {
+  if (!tail.trim()) {
+    return '';
+  }
+
+  const lines = tail.split(/\r?\n/);
+  const firstBasisHeader = lines.findIndex((line) => /^\s*[A-Za-z][A-Za-z\s]*\s+0\s*$/i.test(line));
+  const start = firstBasisHeader >= 0 ? firstBasisHeader : 0;
+  const filtered = lines
+    .slice(start)
+    .filter((line) => !looksLikeModredundantLine(line))
+    .join('\n')
+    .trim();
+
+  return filtered;
+}
+
+function upgradeBasisTextForSolvent(text: string): string {
+  if (!text) {
+    return text;
+  }
+
+  return text
+    .replace(/\blanl2dz\b/ig, 'SDD')
+    .replace(/\b6-31\s*\+?\+?g\*\*\b/ig, '6-311++G**')
+    .replace(/\b6-31\s*g\*\b/ig, '6-311++G**');
+}
+
+function upgradeRouteBasisForSolvent(route: string): string {
+  if (!route) {
+    return route;
+  }
+
+  const upgraded = route
+    .replace(/\/\s*lanl2dz\b/ig, '/SDD')
+    .replace(/\/\s*6-31\s*\+?\+?g\*\*\b/ig, '/6-311++G**')
+    .replace(/\/\s*6-31\s*g\*\b/ig, '/6-311++G**');
+
+  return upgraded;
+}
+
+function normalizeLink0(
+  inheritedLink0: string[],
+  chkName: string,
+  oldChkValue?: string,
+): string[] {
+  const kept = inheritedLink0
+    .map((line) => line.trim())
+    .filter((line) => line && !/^%chk\s*=/i.test(line) && !/^%oldchk\s*=/i.test(line));
+  const result = [...kept, `%chk=${chkName}`];
+  if (oldChkValue) {
+    result.push(`%oldchk=${oldChkValue}`);
+  }
+  return result;
+}
+
+function parseGjfTemplate(content: string): GjfTemplateInfo | undefined {
+  const lines = content.split(/\r?\n/);
+  let i = 0;
+
+  while (i < lines.length && !lines[i].trim()) {
+    i += 1;
+  }
+
+  const link0: string[] = [];
+  while (i < lines.length && lines[i].trim().startsWith('%')) {
+    link0.push(lines[i].trim());
+    i += 1;
+  }
+
+  while (i < lines.length && !lines[i].trim()) {
+    i += 1;
+  }
+
+  const routeLines: string[] = [];
+  while (i < lines.length && lines[i].trim()) {
+    routeLines.push(lines[i].trim());
+    i += 1;
+  }
+  if (!routeLines.length) {
+    return undefined;
+  }
+
+  while (i < lines.length && !lines[i].trim()) {
+    i += 1;
+  }
+
+  const titleLines: string[] = [];
+  while (i < lines.length && lines[i].trim()) {
+    titleLines.push(lines[i]);
+    i += 1;
+  }
+
+  while (i < lines.length && !lines[i].trim()) {
+    i += 1;
+  }
+
+  const chargeMultiplicity = i < lines.length && lines[i].trim() ? lines[i].trim() : '0 1';
+  if (i < lines.length) {
+    i += 1;
+  }
+
+  while (i < lines.length && lines[i].trim()) {
+    i += 1;
+  }
+
+  while (i < lines.length && !lines[i].trim()) {
+    i += 1;
+  }
+
+  const tail = lines.slice(i).join('\n').trim();
+  const route = normalizeSpaces(routeLines.join(' '));
+  const basisTail = routeHasGenLikeBasis(route) ? extractBasisTailFromTail(tail) : '';
+
+  return {
+    link0,
+    route,
+    title: titleLines.join(' ').trim() || 'Generated by Gaussian Copilot',
+    chargeMultiplicity,
+    basisTail,
+  };
+}
+
+async function loadTemplateFromCompanionGjf(logPath: string): Promise<GjfTemplateInfo | undefined> {
+  const parsed = path.parse(logPath);
+  const gjfPath = path.join(parsed.dir, `${parsed.name}.gjf`);
+  try {
+    const raw = await fs.readFile(gjfPath, 'utf8');
+    return parseGjfTemplate(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+function defaultTemplateFromSummary(logPath: string, summary: GaussianSummary): GjfTemplateInfo {
+  const parsed = path.parse(logPath);
+  const method = summary.overview.method?.trim() || 'B3LYP';
+  const basis = summary.overview.basisSet?.trim() || summary.basis?.trim() || '6-31G*';
+  const charge = Number.isFinite(summary.overview.charge) ? String(summary.overview.charge) : '0';
+  const multiplicity = Number.isFinite(summary.overview.multiplicity) ? String(summary.overview.multiplicity) : '1';
+
+  return {
+    link0: [
+      '%nprocshared=8',
+      '%mem=16GB',
+      `%chk=${parsed.name}.chk`,
+    ],
+    route: `#p ${method}/${basis}`,
+    title: `${parsed.name} generated by Gaussian Copilot`,
+    chargeMultiplicity: `${charge} ${multiplicity}`,
+    basisTail: '',
+  };
+}
+
+function atomsToGaussianCoordinates(atoms: Array<{ atomicNumber: number; x: number; y: number; z: number }>): string {
+  return atoms.map((atom) => {
+    const symbol = symbols[atom.atomicNumber] || 'X';
+    const x = Number(atom.x).toFixed(6);
+    const y = Number(atom.y).toFixed(6);
+    const z = Number(atom.z).toFixed(6);
+    return `${symbol} ${x} ${y} ${z}`;
+  }).join('\n');
+}
+
+async function buildNextInputPlan(
+  logPath: string,
+  summary: GaussianSummary,
+  kind: 'ts' | 'ts-read' | 'sol' | 'irc',
+  frameIndex: number,
+  solvent?: string,
+): Promise<NextInputPlan> {
+  const template = await loadTemplateFromCompanionGjf(logPath) ?? defaultTemplateFromSummary(logPath, summary);
+  const parsed = path.parse(logPath);
+  let outputPath: string;
+  if (kind === 'sol') {
+    const smdDir = path.join(parsed.dir, 'smd');
+    await fs.mkdir(smdDir, { recursive: true });
+    outputPath = path.join(smdDir, `${parsed.name}.gjf`);
+  } else if (kind === 'irc') {
+    outputPath = path.join(parsed.dir, `${parsed.name}-irc.gjf`);
+  } else {
+    outputPath = path.join(parsed.dir, `${parsed.name}-ts.gjf`);
+  }
+
+  const outputBase = path.parse(outputPath).name;
+  const chkName = `${outputBase}.chk`;
+  const oldChkValue = kind === 'sol'
+    ? `../${parsed.name}.chk`
+    : (kind === 'irc' || kind === 'ts-read' ? `${parsed.name}.chk` : undefined);
+
+  const link0 = normalizeLink0(template.link0, chkName, oldChkValue);
+
+  let route: string;
+  if (kind === 'ts-read') {
+    route = buildReadTsRoute(template.route);
+  } else {
+    route = buildRoute(template.route, kind, solvent);
+  }
+
+  if (kind === 'sol') {
+    route = upgradeRouteBasisForSolvent(route);
+  }
+
+  const frame = summary.frames[Math.max(0, Math.min(summary.frames.length - 1, frameIndex))];
+  const coordinates = frame ? atomsToGaussianCoordinates(frame.atoms) : '';
+  const basisTail = kind === 'sol'
+    ? upgradeBasisTextForSolvent(template.basisTail)
+    : template.basisTail;
+
+  const lines: string[] = [];
+  lines.push(...link0);
+  lines.push(route);
+  lines.push('');
+  lines.push(template.title);
+  lines.push('');
+  lines.push(template.chargeMultiplicity);
+  if (kind === 'ts') {
+    lines.push(coordinates);
+  }
+  lines.push('');
+  if (basisTail) {
+    lines.push(basisTail);
+    lines.push('');
+  }
+
+  const content = `${lines.join('\n').replace(/\n+$/g, '')}\n\n\n`;
+  return {
+    outputPath,
+    route,
+    chkName,
+    oldChkValue,
+    content,
+  };
+}
+
+async function writeNextInputFile(plan: NextInputPlan): Promise<string> {
+  await fs.writeFile(plan.outputPath, plan.content, 'utf8');
+  return plan.outputPath;
+}
 
 function toXyzString(summary: GaussianSummary, frameIndex: number): string {
   const frame = summary.frames[frameIndex];
@@ -42,6 +361,7 @@ function toXyzFromAtoms(atoms: Array<{ atomicNumber: number; x: number; y: numbe
 
 export function showLogPanel(
   context: vscode.ExtensionContext,
+  sourceLogPath: string,
   title: string,
   summary: GaussianSummary,
   viewerOptions: ViewerRenderOptions,
@@ -77,6 +397,83 @@ export function showLogPanel(
     overview: summary.overview,
     thermo: summary.thermo,
     viewer: viewerOptions,
+  });
+
+  panel.webview.onDidReceiveMessage(async (message: unknown) => {
+    const req = message as {
+      type?: string;
+      kind?: 'ts' | 'ts-read' | 'sol' | 'irc';
+      frameIndex?: number;
+      solvent?: string;
+      currentValue?: string;
+    };
+
+    if (req?.type === 'requestCustomSolvent') {
+      const picked = await vscode.window.showInputBox({
+        title: '输入自定义溶剂',
+        prompt: '用于 scrf=(smd,solvent=xxx) 中的 xxx',
+        placeHolder: '例如：dmf',
+        value: req.currentValue?.trim() || '',
+      });
+
+      panel.webview.postMessage({
+        type: 'setCustomSolvent',
+        value: picked?.trim() || '',
+      });
+      return;
+    }
+
+    if ((req?.type !== 'generateNextInput' && req?.type !== 'previewNextInput') || !req.kind) {
+      return;
+    }
+
+    try {
+      const plan = await buildNextInputPlan(
+        sourceLogPath,
+        summary,
+        req.kind,
+        Number.isFinite(req.frameIndex) ? Number(req.frameIndex) : 0,
+        req.solvent,
+      );
+
+      const skipPreview = context.workspaceState.get<boolean>('chemAssist.nextPreviewDisabled', false);
+      if (req.type === 'previewNextInput' && !skipPreview) {
+        const kindLabelMap: Record<'ts' | 'ts-read' | 'sol' | 'irc', string> = {
+          ts: 'TS（当前帧坐标）',
+          'ts-read': 'TS（readfc）',
+          sol: 'Sol（SMD）',
+          irc: 'IRC',
+        };
+        const detail = [
+          `目标文件: ${plan.outputPath}`,
+          `%chk: ${plan.chkName}`,
+          `%oldchk: ${plan.oldChkValue ?? '(无)'}`,
+          `Route: ${plan.route}`,
+          '',
+          '可选：点“生成并不再显示”可跳过后续预览。',
+        ].join('\n');
+
+        const choice = await vscode.window.showInformationMessage(
+          `即将生成 ${kindLabelMap[req.kind]} 输入文件，是否继续？`,
+          { modal: true, detail },
+          '生成',
+          '生成并不再显示',
+        );
+        if (choice === '生成并不再显示') {
+          await context.workspaceState.update('chemAssist.nextPreviewDisabled', true);
+        } else if (choice !== '生成') {
+          return;
+        }
+      }
+
+      const outputPath = await writeNextInputFile(plan);
+      const doc = await vscode.workspace.openTextDocument(outputPath);
+      await vscode.window.showTextDocument(doc, { preview: false });
+      await vscode.window.showInformationMessage(`已生成输入文件：${path.basename(outputPath)}`);
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      await vscode.window.showErrorMessage(`生成输入文件失败：${messageText}`);
+    }
   });
 
   panel.webview.html = `<!DOCTYPE html>
@@ -188,7 +585,6 @@ export function showLogPanel(
     .action-row button:hover {
       background: var(--vscode-button-secondaryHoverBackground);
     }
-    .freq-list { max-height: 120px; overflow: auto; font-size: 12px; line-height: 1.45; border: 1px solid #3f3f46; border-radius: 6px; padding: 6px; }
     #mode { min-width: 0; }
     .section-title { font-weight: 600; margin-top: 8px; margin-bottom: 4px; }
     .hint { opacity: 0.8; font-size: 12px; }
@@ -282,6 +678,7 @@ export function showLogPanel(
       <div class="tabs">
         <button id="tabOverviewBtn" class="tab-btn active">Overview</button>
         <button id="tabThermoBtn" class="tab-btn">Thermo</button>
+        <button id="tabNextBtn" class="tab-btn">Next</button>
       </div>
       <div id="tabOverview" class="tab-panel active">
         <table class="kv-table" id="overviewTable"></table>
@@ -289,8 +686,42 @@ export function showLogPanel(
       <div id="tabThermo" class="tab-panel">
         <table class="kv-table" id="thermoTable"></table>
       </div>
-      <div class="section-title">频率</div>
-      <div id="freqList" class="freq-list"></div>
+      <div id="tabNext" class="tab-panel">
+        <div class="action-row" style="margin-top:0;">
+          <button id="nextTsBtn">从当前帧进行TS过渡态搜索</button>
+        </div>
+        <div class="action-row">
+          <button id="nextTsReadBtn">从当前帧进行TS过渡态搜索（read方法/更快）</button>
+        </div>
+        <div class="action-row">
+          <select id="nextSolvent" style="flex:1; min-width: 220px; border:1px solid var(--vscode-panel-border); border-radius:6px; padding:4px 8px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground);">
+            <option value="water">Water</option>
+            <option value="DMSO">DMSO</option>
+            <option value="nitro-methane">Nitro-methane</option>
+            <option value="acetonitrile">Acetonitrile</option>
+            <option value="methanol">Methanol</option>
+            <option value="ethanol">Ethanol</option>
+            <option value="acetone">Acetone</option>
+            <option value="dichloro-methane">Dichloro-methane</option>
+            <option value="dichloro-ethane">Dichloro-ethane</option>
+            <option value="THF">THF</option>
+            <option value="aniline">Aniline</option>
+            <option value="chlorobenzene">Chlorobenzene</option>
+            <option value="chloroform">Chloroform</option>
+            <option value="diethyl ether">Diethyl ether</option>
+            <option value="toluene">Toluene</option>
+            <option value="benzene">Benzene</option>
+            <option value="CCl4">CCl4</option>
+            <option value="cyclohexane">Cyclohexane</option>
+            <option value="heptane">Heptane</option>
+            <option value="__custom__">自定义...</option>
+          </select>
+          <button id="nextSolBtn">进行Sol溶剂化</button>
+        </div>
+        <div class="action-row">
+          <button id="nextIrcBtn">进行IRC路径验证</button>
+        </div>
+      </div>
     </div>
   </div>
   <div class="card" style="margin-top: 8px; padding: 8px;">
@@ -300,6 +731,7 @@ export function showLogPanel(
   <script nonce="${nonce}" src="${threeJsUri}"></script>
   <script nonce="${nonce}" src="${echartsUri}"></script>
   <script nonce="${nonce}">
+    const vscodeApi = acquireVsCodeApi();
     const data = ${payload};
     const viewerCfg = Object.assign({
       backgroundColor: 'white',
@@ -322,10 +754,17 @@ export function showLogPanel(
     const vibStop = document.getElementById('vibStop');
     const tabOverviewBtn = document.getElementById('tabOverviewBtn');
     const tabThermoBtn = document.getElementById('tabThermoBtn');
+    const tabNextBtn = document.getElementById('tabNextBtn');
     const tabOverview = document.getElementById('tabOverview');
     const tabThermo = document.getElementById('tabThermo');
+    const tabNext = document.getElementById('tabNext');
     const overviewTable = document.getElementById('overviewTable');
     const thermoTable = document.getElementById('thermoTable');
+    const nextTsBtn = document.getElementById('nextTsBtn');
+    const nextTsReadBtn = document.getElementById('nextTsReadBtn');
+    const nextSolBtn = document.getElementById('nextSolBtn');
+    const nextIrcBtn = document.getElementById('nextIrcBtn');
+    const nextSolvent = document.getElementById('nextSolvent');
     const renderStyle = document.getElementById('renderStyle');
     const bgColor = document.getElementById('bgColor');
     const autoZoom = document.getElementById('autoZoom');
@@ -338,6 +777,8 @@ export function showLogPanel(
     let phase = 0;
     let frameRenderScheduled = false;
     let pendingFrameIndex = 0;
+    let customSolvent = '';
+    let resizeTimer = null;
 
     function xyzFromAtoms(atoms) {
       if (!atoms || !atoms.length) {
@@ -466,10 +907,14 @@ export function showLogPanel(
 
     function switchTab(target) {
       const overviewActive = target === 'overview';
+      const thermoActive = target === 'thermo';
+      const nextActive = target === 'next';
       tabOverviewBtn.classList.toggle('active', overviewActive);
-      tabThermoBtn.classList.toggle('active', !overviewActive);
+      tabThermoBtn.classList.toggle('active', thermoActive);
+      tabNextBtn.classList.toggle('active', nextActive);
       tabOverview.classList.toggle('active', overviewActive);
-      tabThermo.classList.toggle('active', !overviewActive);
+      tabThermo.classList.toggle('active', thermoActive);
+      tabNext.classList.toggle('active', nextActive);
     }
 
     function renderFrame(index) {
@@ -558,12 +1003,75 @@ export function showLogPanel(
 
     tabOverviewBtn.addEventListener('click', () => switchTab('overview'));
     tabThermoBtn.addEventListener('click', () => switchTab('thermo'));
+    tabNextBtn.addEventListener('click', () => switchTab('next'));
+
+    nextTsBtn.addEventListener('click', () => {
+      const frameIndex = Number(frameSlider.value);
+      vscodeApi.postMessage({
+        type: 'previewNextInput',
+        kind: 'ts',
+        frameIndex,
+      });
+    });
+
+    nextTsReadBtn.addEventListener('click', () => {
+      vscodeApi.postMessage({
+        type: 'previewNextInput',
+        kind: 'ts-read',
+        frameIndex: Number(frameSlider.value),
+      });
+    });
+
+    nextSolvent.addEventListener('change', () => {
+      if (String(nextSolvent.value || '') !== '__custom__') {
+        return;
+      }
+      vscodeApi.postMessage({
+        type: 'requestCustomSolvent',
+        currentValue: customSolvent,
+      });
+    });
+
+    window.addEventListener('message', (event) => {
+      const msg = event.data || {};
+      if (msg.type !== 'setCustomSolvent') {
+        return;
+      }
+
+      const trimmed = String(msg.value || '').trim();
+      if (!trimmed) {
+        nextSolvent.value = 'water';
+        return;
+      }
+
+      customSolvent = trimmed;
+      const customOption = nextSolvent.querySelector('option[value="__custom__"]');
+      if (customOption) {
+        customOption.textContent = '自定义: ' + customSolvent;
+      }
+      nextSolvent.value = '__custom__';
+    });
+
+    nextSolBtn.addEventListener('click', () => {
+      const selected = String(nextSolvent.value || 'water').trim() || 'water';
+      const solvent = selected === '__custom__' ? (customSolvent || 'water') : selected;
+      vscodeApi.postMessage({
+        type: 'previewNextInput',
+        kind: 'sol',
+        frameIndex: Number(frameSlider.value),
+        solvent,
+      });
+    });
+
+    nextIrcBtn.addEventListener('click', () => {
+      vscodeApi.postMessage({
+        type: 'previewNextInput',
+        kind: 'irc',
+        frameIndex: Number(frameSlider.value),
+      });
+    });
 
     const maxFreq = Math.max(20, Number(viewerCfg.maxDisplayedFrequencies || 180));
-    document.getElementById('freqList').innerHTML = (data.frequencies || []).slice(0, maxFreq)
-      .map((f, idx) => '<div>mode ' + idx + ': ' + f.value + ' cm⁻¹</div>')
-      .join('') || '未解析到频率';
-
     modeSelect.innerHTML = (data.frequencies || []).slice(0, maxFreq)
       .map((f, idx) => '<option value="' + idx + '">mode ' + idx + ' (' + f.value + ' cm⁻¹)</option>')
       .join('');
@@ -673,28 +1181,37 @@ export function showLogPanel(
       requestRenderFrame(frameIndex);
     });
 
+    function refreshViewerViewport() {
+      viewer.resize();
+      viewer.zoomTo();
+      viewer.render();
+    }
+
+    function scheduleViewportRefresh(delayMs) {
+      if (resizeTimer) {
+        clearTimeout(resizeTimer);
+      }
+      resizeTimer = setTimeout(() => {
+        resizeTimer = null;
+        refreshViewerViewport();
+      }, delayMs);
+    }
+
     syncStyleControlsFromConfig();
     requestRenderFrame(0);
-    setTimeout(() => {
-      viewer.resize();
-      viewer.zoomTo();
-      viewer.render();
-    }, 0);
-
-    setTimeout(() => {
-      viewer.resize();
-      viewer.zoomTo();
-      viewer.render();
-    }, 120);
+    scheduleViewportRefresh(0);
+    scheduleViewportRefresh(120);
 
     window.addEventListener('resize', () => {
-      viewer.resize();
-      viewer.zoomTo();
-      viewer.render();
+      scheduleViewportRefresh(80);
     });
 
     window.addEventListener('beforeunload', () => {
       stopVibration();
+      if (resizeTimer) {
+        clearTimeout(resizeTimer);
+        resizeTimer = null;
+      }
     });
   </script>
 </body>

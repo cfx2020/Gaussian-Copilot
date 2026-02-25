@@ -10,7 +10,7 @@
     "log visualization",
     "pbs"
   ],
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "linsay",
   "license": "MIT",
   "homepage": "https://github.com/cfx2020/Gaussian-Copilot",
@@ -34,19 +34,6 @@
     "README.md",
     "LICENSE",
     "package.json"
-  ],
-  "activationEvents": [
-    "onCommand:chemAssist.visualizeLog",
-    "onCommand:chemAssist.submitGjf",
-    "onCommand:chemAssist.batchSubmitGjf",
-    "onCommand:chemAssist.batchVisualizeLog",
-    "onCommand:chemAssist.applyGjfTemplate",
-    "onCommand:chemAssist.refreshJobs",
-    "onCommand:chemAssist.cancelJob",
-    "onCommand:chemAssist.removeJob",
-    "onCommand:chemAssist.clearFinishedJobs",
-    "onCommand:chemAssist.openJobOutput",
-    "onView:chemAssist.jobView"
   ],
   "main": "./dist/extension.js",
   "icon": "media/icon-gaussian-copilot.png",
@@ -95,6 +82,10 @@
       {
         "command": "chemAssist.openJobGjf",
         "title": "打开选中gjf"
+      },
+      {
+        "command": "chemAssist.downloadJobOutput",
+        "title": "下载选中log/out"
       },
       {
         "command": "chemAssist.resubmitJob",
@@ -177,6 +168,11 @@
           "command": "chemAssist.openJobGjf",
           "when": "view == chemAssist.jobView && viewItem == chemAssistJobItem",
           "group": "navigation@1"
+        },
+        {
+          "command": "chemAssist.downloadJobOutput",
+          "when": "view == chemAssist.jobView && viewItem == chemAssistJobItem",
+          "group": "navigation@2.5"
         }
       ]
     },

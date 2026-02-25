@@ -1,4 +1,6 @@
 import * as path from 'path';
+import { spawn } from 'child_process';
+import * as os from 'os';
 import * as vscode from 'vscode';
 import { getSettings, mergeTemplates } from './config/settings';
 import { initDiagnostics, logError, logInfo } from './logging/diagnostics';
@@ -9,7 +11,7 @@ import { renderTemplate } from './templates/templateEngine';
 import { validateTemplate } from './templates/templateValidator';
 import { GjfTemplate } from './templates/types';
 import { error, info, warn } from './ui/notifications';
-import { JobTreeProvider } from './views/jobTreeView';
+import { JobRecord, JobTreeProvider } from './views/jobTreeView';
 import { showLogPanel } from './webview/panel';
 
 async function getActiveFile(): Promise<vscode.Uri | undefined> {
@@ -42,6 +44,272 @@ function isInputFile(uri: vscode.Uri): boolean {
   return path.extname(uri.fsPath).toLowerCase() === '.gjf';
 }
 
+function getParentUri(uri: vscode.Uri): vscode.Uri {
+  const normalizedPath = uri.path.replace(/\/+/g, '/');
+  const parentPath = normalizedPath.replace(/\/[^/]*$/, '') || '/';
+  return uri.with({ path: parentPath });
+}
+
+async function resolveUniqueTargetUri(dir: vscode.Uri, baseName: string): Promise<vscode.Uri> {
+  const parsed = path.parse(baseName);
+  let candidate = vscode.Uri.joinPath(dir, baseName);
+  let index = 1;
+
+  while (true) {
+    try {
+      await vscode.workspace.fs.stat(candidate);
+      candidate = vscode.Uri.joinPath(dir, `${parsed.name}-${index}${parsed.ext}`);
+      index += 1;
+    } catch {
+      return candidate;
+    }
+  }
+}
+
+function getJobRecordFromTreeItem(item: unknown): JobRecord | undefined {
+  if (!item || typeof item !== 'object') {
+    return undefined;
+  }
+
+  const maybe = item as { job?: JobRecord };
+  if (maybe.job && typeof maybe.job.id === 'string' && typeof maybe.job.fileName === 'string') {
+    return maybe.job;
+  }
+
+  const raw = item as JobRecord;
+  if (typeof raw.id === 'string' && typeof raw.fileName === 'string') {
+    return raw;
+  }
+
+  return undefined;
+}
+
+function parseSchedulerOutputLocation(stdout: string): { host: string; remoteDir: string } | undefined {
+  const match = stdout.match(/Output_Path\s*=\s*([^:\s]+):([^\r\n]+)/i);
+  if (!match?.[1] || !match?.[2]) {
+    return undefined;
+  }
+
+  const host = match[1].trim();
+  const remoteFilePath = match[2].trim().replace(/\\/g, '/');
+  const remoteDir = path.posix.dirname(remoteFilePath);
+  if (!host || !remoteDir) {
+    return undefined;
+  }
+
+  return { host, remoteDir };
+}
+
+function runScp(remoteSpec: string, localPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('scp', [remoteSpec, localPath], { windowsHide: true });
+    let stderr = '';
+
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (err) => {
+      reject(err);
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      const message = stderr.trim() || `scp exited with code ${code}`;
+      reject(new Error(message));
+    });
+  });
+}
+
+async function fetchOutputFromServer(
+  context: vscode.ExtensionContext,
+  item: unknown,
+): Promise<{ fileName: string; content: Uint8Array } | undefined> {
+  const record = getJobRecordFromTreeItem(item);
+  if (!record || !record.id || record.id.startsWith('local-')) {
+    return undefined;
+  }
+
+  let location: { host: string; remoteDir: string } | undefined;
+  try {
+    const submitter = await createSubmitter(context);
+    const status = await submitter.query(record.id);
+    location = parseSchedulerOutputLocation(status.stdout);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logError(`Query scheduler for download failed (${record.id}): ${message}`);
+  }
+
+  if (!location && record.remotePath) {
+    const normalizedRemote = record.remotePath.replace(/\\/g, '/').trim();
+    const hostSplit = normalizedRemote.match(/^([^:]+):(.+)$/);
+    if (hostSplit?.[1] && hostSplit?.[2]) {
+      location = {
+        host: hostSplit[1].trim(),
+        remoteDir: path.posix.dirname(hostSplit[2].trim()),
+      };
+    }
+  }
+
+  if (!location) {
+    return undefined;
+  }
+
+  const configuredUser = getSettings().jobs.username.trim();
+  const username = configuredUser || (process.env.USER ?? process.env.LOGNAME ?? process.env.USERNAME ?? '').trim();
+  const hostWithUser = location.host.includes('@') || !username
+    ? location.host
+    : `${username}@${location.host}`;
+
+  const baseName = path.basename(record.fileName, path.extname(record.fileName));
+  const candidates = ['.log', '.out', '.LOG', '.OUT'];
+  const tmpDirUri = vscode.Uri.file(path.join(os.tmpdir(), 'gaussian-copilot-downloads'));
+  await vscode.workspace.fs.createDirectory(tmpDirUri);
+
+  for (const ext of candidates) {
+    const remoteFile = path.posix.join(location.remoteDir, `${baseName}${ext}`);
+    const tempName = `${baseName}-${Date.now()}-${Math.random().toString(16).slice(2)}${ext.toLowerCase()}`;
+    const localTarget = vscode.Uri.joinPath(tmpDirUri, tempName);
+
+    try {
+      await runScp(`${hostWithUser}:${remoteFile}`, localTarget.fsPath);
+      const content = await vscode.workspace.fs.readFile(localTarget);
+      await vscode.workspace.fs.delete(localTarget, { useTrash: false });
+      return {
+        fileName: `${baseName}${ext.toLowerCase()}`,
+        content,
+      };
+    } catch {
+      try {
+        await vscode.workspace.fs.delete(localTarget, { useTrash: false });
+      } catch {
+      }
+    }
+  }
+
+  return undefined;
+}
+
+async function handleDownloadJobOutput(
+  context: vscode.ExtensionContext,
+  jobTreeView: vscode.TreeView<vscode.TreeItem>,
+  jobsProvider: JobTreeProvider,
+  item: unknown,
+): Promise<void> {
+  const selected = jobTreeView.selection
+    .filter((entry) => (entry as { contextValue?: string }).contextValue === 'chemAssistJobItem');
+  const targets = selected.length > 0 ? selected : [item];
+
+  const targetItems = targets.filter(Boolean);
+  if (!targetItems.length) {
+    warn('请选择一个或多个作业后再下载。');
+    return;
+  }
+
+  const isBatch = targetItems.length > 1;
+  let batchDestinationDir: vscode.Uri | undefined;
+  let batchFirstSaveHandled = false;
+
+  let success = 0;
+  let failed = 0;
+  let skipped = 0;
+
+  await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: `下载 log/out (${targetItems.length})` },
+    async (progress) => {
+      for (let index = 0; index < targetItems.length; index += 1) {
+        const target = targetItems[index];
+        const record = getJobRecordFromTreeItem(target);
+        progress.report({ message: `${index + 1}/${targetItems.length} ${record?.fileName ?? ''}`.trim() });
+
+        try {
+          let sourceFileName = '';
+          let sourceContent: Uint8Array | undefined;
+
+          const remoteFetched = await fetchOutputFromServer(context, target);
+          if (remoteFetched) {
+            sourceFileName = remoteFetched.fileName;
+            sourceContent = remoteFetched.content;
+          } else {
+            const outputUri = await jobsProvider.resolveOutputFileUri(target);
+            if (outputUri) {
+              sourceFileName = path.basename(outputUri.fsPath);
+              sourceContent = await vscode.workspace.fs.readFile(outputUri);
+            }
+          }
+
+          if (!sourceContent) {
+            skipped += 1;
+            continue;
+          }
+
+          if (isBatch) {
+            if (!batchFirstSaveHandled) {
+              const firstSaveUri = await vscode.window.showSaveDialog({
+                title: '选择批量下载位置（首个文件）',
+                saveLabel: '下载',
+                defaultUri: vscode.Uri.file(path.join(os.homedir(), sourceFileName)),
+                filters: {
+                  'Gaussian Output': ['log', 'out'],
+                  'All Files': ['*'],
+                },
+              });
+
+              if (!firstSaveUri) {
+                skipped += 1;
+                return;
+              }
+
+              await vscode.workspace.fs.writeFile(firstSaveUri, sourceContent);
+              batchDestinationDir = getParentUri(firstSaveUri);
+              batchFirstSaveHandled = true;
+            } else if (batchDestinationDir) {
+              const destinationUri = await resolveUniqueTargetUri(batchDestinationDir, sourceFileName);
+              await vscode.workspace.fs.writeFile(destinationUri, sourceContent);
+            } else {
+              skipped += 1;
+              continue;
+            }
+          } else {
+            const saveUri = await vscode.window.showSaveDialog({
+              title: '选择下载位置',
+              saveLabel: '下载',
+              defaultUri: vscode.Uri.file(path.join(os.homedir(), sourceFileName)),
+              filters: {
+                'Gaussian Output': ['log', 'out'],
+                'All Files': ['*'],
+              },
+            });
+
+            if (!saveUri) {
+              skipped += 1;
+              continue;
+            }
+
+            await vscode.workspace.fs.writeFile(saveUri, sourceContent);
+          }
+          success += 1;
+        } catch (e) {
+          failed += 1;
+          const message = e instanceof Error ? e.message : String(e);
+          logError(`Download output failed: ${message}`);
+        }
+      }
+    },
+  );
+
+  if (failed === 0 && skipped === 0) {
+    info(`下载完成：成功 ${success} 个。`);
+    return;
+  }
+
+  warn(`下载完成：成功 ${success} 个，未找到 ${skipped} 个，失败 ${failed} 个。`);
+}
+
 async function handleVisualize(uri?: vscode.Uri): Promise<void> {
   const target = uri ?? await getActiveFile();
   if (!target) {
@@ -60,6 +328,7 @@ async function handleVisualize(uri?: vscode.Uri): Promise<void> {
   const summary = await parseGaussianLog(target.fsPath, settings.parser.maxFrames);
   showLogPanel(
     (globalThis as unknown as { extensionContext: vscode.ExtensionContext }).extensionContext,
+    target.fsPath,
     path.basename(target.fsPath),
     summary,
     settings.viewer,
@@ -370,6 +639,12 @@ export function activate(context: vscode.ExtensionContext): void {
         const doc = await vscode.workspace.openTextDocument(uri);
         await vscode.window.showTextDocument(doc, { preview: false });
       }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('chemAssist.downloadJobOutput', async (item: unknown) => {
+      await handleDownloadJobOutput(context, jobTreeView, jobsProvider, item);
     }),
   );
 

@@ -181,7 +181,9 @@ export async function parseGaussianLog(filePath: string, maxFrames: number): Pro
 
     const stfMatch = line.match(/Sum of electronic and thermal Free Energies=\s*(-?\d+\.\d+)/i);
     if (stfMatch) {
-      sumElectronicAndThermalFreeEnergy = Number(stfMatch[1]);
+      const free = Number(stfMatch[1]);
+      sumElectronicAndThermalFreeEnergy = free;
+      freeEnergy = free;
     }
 
     const totalThermoMatch = line.match(/^\s*Total\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)/);
@@ -206,11 +208,6 @@ export async function parseGaussianLog(filePath: string, maxFrames: number): Pro
       const parsed = parseFrequencyBlock(lines, i, vals);
       frequencies.push(...parsed.modes);
       i = Math.max(i, parsed.nextIndex);
-    }
-
-    const gibbsMatch = line.match(/Sum of electronic and thermal Free Energies=\s*(-?\d+\.\d+)/i);
-    if (gibbsMatch) {
-      freeEnergy = Number(gibbsMatch[1]);
     }
 
     if (/Normal termination of Gaussian/i.test(line)) {

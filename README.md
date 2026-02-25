@@ -22,7 +22,8 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 - 结构帧浏览与 3D 交互
 - 频率模式与振动播放
 - 能量变化曲线（支持点选联动）
-- Overview / Thermo 信息面板
+- Overview / Thermo / Next 信息面板
+- Next 面板支持一键生成 TS / Sol / IRC 后续输入
 
 ### 4) 作业时间线与状态跟踪
 - 按时间批次分组显示提交记录
@@ -34,7 +35,7 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 ### 5) 作业结果快速定位
 - 单击作业项即可跳转对应 `.log/.out`
 - 作业右键可直接“可视化对应log/out”
-- 作业右键支持“可视化选中log/out”“打开选中gjf”
+- 作业右键支持“可视化选中log/out”“打开选中gjf”“下载选中log/out”
 
 ## 🚀 Quick Start
 
