@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.1] - 2026-03-04
+
+### Changed
+- 提交流程增强为 Linux 下优先通过 `bash` 执行，并自动加载 `~/.bashrc`，支持直接使用 `gsub` 等 alias。
+- `chemAssist.submit.preCommands` 由“保留项”改为实际参与执行，且与提交命令在同一 shell 顺序运行。
+- 提交相关默认值调整：
+  - `chemAssist.submit.runCommandTemplate` 默认 `gsub {file}`
+  - `chemAssist.submit.preCommands` 默认 `source ~/.bashrc`
+- `Next` 面板中 `Dichloro-methane` / `Dichloro-ethane` 统一改为无连字符写入（`dichloromethane` / `dichloroethane`）。
+- 作业看板显示优化：任务标题不再显示 `.gjf` 后缀。
+- 结构控制优化：帧滑块初始默认定位到最后一帧。
+
+### Fixed
+- 修复提交脚本路径在权限不足时失败的问题：遇到 `Permission denied` 时自动回退 `bash <script>` 重试一次。
+- 修复 Sol 输入文件命名：改为 `<name>_sol.gjf`，并确保 `%chk` 与输出文件名始终一致。
+- 修复 Sol 基组升级中 `6-31G* -> 6-311++G**` 未生效的问题（正则匹配边界修复）。
+
 ## [0.3.0] - 2026-02-25
 
 ### Added

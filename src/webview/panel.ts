@@ -56,6 +56,18 @@ function ensureRoutePrefix(route: string): { prefix: string; body: string } {
   };
 }
 
+function normalizeSolventKeyword(solvent: string): string {
+  const trimmed = solvent.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower === 'dichloro-methane') {
+    return 'dichloromethane';
+  }
+  if (lower === 'dichloro-ethane') {
+    return 'dichloroethane';
+  }
+  return trimmed;
+}
+
 function buildRoute(route: string, kind: 'ts' | 'sol' | 'irc', solvent?: string): string {
   const { prefix, body } = ensureRoutePrefix(route || '#p');
   if (kind === 'ts') {
@@ -66,7 +78,7 @@ function buildRoute(route: string, kind: 'ts' | 'sol' | 'irc', solvent?: string)
 
   if (kind === 'sol') {
     const kept = removeRouteKeywords(body, ['opt', 'freq', 'irc', 'scrf', 'guess', 'geom']);
-    const sol = solvent && solvent.trim() ? solvent.trim() : 'water';
+    const sol = solvent && solvent.trim() ? normalizeSolventKeyword(solvent) : 'water';
     const combined = normalizeSpaces(`${kept} scrf=(smd,solvent=${sol}) guess=read geom=check`);
     return `${prefix} ${combined}`.trim();
   }
@@ -116,8 +128,8 @@ function upgradeBasisTextForSolvent(text: string): string {
 
   return text
     .replace(/\blanl2dz\b/ig, 'SDD')
-    .replace(/\b6-31\s*\+?\+?g\*\*\b/ig, '6-311++G**')
-    .replace(/\b6-31\s*g\*\b/ig, '6-311++G**');
+    .replace(/\b6-31\s*\+?\+?g\*\*(?!\*)/ig, '6-311++G**')
+    .replace(/\b6-31\s*g\*(?!\*)/ig, '6-311++G**');
 }
 
 function upgradeRouteBasisForSolvent(route: string): string {
@@ -127,8 +139,8 @@ function upgradeRouteBasisForSolvent(route: string): string {
 
   const upgraded = route
     .replace(/\/\s*lanl2dz\b/ig, '/SDD')
-    .replace(/\/\s*6-31\s*\+?\+?g\*\*\b/ig, '/6-311++G**')
-    .replace(/\/\s*6-31\s*g\*\b/ig, '/6-311++G**');
+    .replace(/\/\s*6-31\s*\+?\+?g\*\*(?!\*)/ig, '/6-311++G**')
+    .replace(/\/\s*6-31\s*g\*(?!\*)/ig, '/6-311++G**');
 
   return upgraded;
 }
@@ -269,7 +281,7 @@ async function buildNextInputPlan(
   if (kind === 'sol') {
     const smdDir = path.join(parsed.dir, 'smd');
     await fs.mkdir(smdDir, { recursive: true });
-    outputPath = path.join(smdDir, `${parsed.name}.gjf`);
+    outputPath = path.join(smdDir, `${parsed.name}_sol.gjf`);
   } else if (kind === 'irc') {
     outputPath = path.join(parsed.dir, `${parsed.name}-irc.gjf`);
   } else {
@@ -702,8 +714,8 @@ export function showLogPanel(
             <option value="methanol">Methanol</option>
             <option value="ethanol">Ethanol</option>
             <option value="acetone">Acetone</option>
-            <option value="dichloro-methane">Dichloro-methane</option>
-            <option value="dichloro-ethane">Dichloro-ethane</option>
+            <option value="dichloromethane">Dichloromethane</option>
+            <option value="dichloroethane">Dichloroethane</option>
             <option value="THF">THF</option>
             <option value="aniline">Aniline</option>
             <option value="chlorobenzene">Chlorobenzene</option>
@@ -772,7 +784,10 @@ export function showLogPanel(
     const sphereScale = document.getElementById('sphereScale');
     const stickRadiusLabel = document.getElementById('stickRadiusLabel');
     const sphereScaleLabel = document.getElementById('sphereScaleLabel');
-    frameSlider.max = String(Math.max(data.frameXyz.length - 1, 0));
+    const initialFrameIndex = Math.max(data.frameXyz.length - 1, 0);
+    frameSlider.max = String(initialFrameIndex);
+    frameSlider.value = String(initialFrameIndex);
+    frameLabel.textContent = String(initialFrameIndex);
     let vibTimer = null;
     let phase = 0;
     let frameRenderScheduled = false;
@@ -1198,7 +1213,7 @@ export function showLogPanel(
     }
 
     syncStyleControlsFromConfig();
-    requestRenderFrame(0);
+    requestRenderFrame(initialFrameIndex);
     scheduleViewportRefresh(0);
     scheduleViewportRefresh(120);
 

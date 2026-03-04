@@ -64,7 +64,7 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 
 ### Submit
 - `chemAssist.submit.runCommandTemplate`：提交命令模板（占位符：`{file}`、`{basename}`、`{dir}`）
-- `chemAssist.submit.preCommands`：预执行命令（保留项，便于兼容集群环境）
+- `chemAssist.submit.preCommands`：提交前预执行命令（与提交命令在同一 shell 中顺序执行）
 
 ### Job View
 - `chemAssist.jobs.autoRefreshSeconds`：作业状态自动刷新间隔（秒，`0` 表示关闭）
@@ -96,7 +96,8 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 ## 📝 Notes
 
 - 推荐在 Linux / 集群环境中使用（如 CentOS + PBS）。
-- 若使用 alias（例如 `gsub`），请确保扩展运行环境可访问该命令。
+- Linux 下提交会优先使用 `bash` 并自动加载 `~/.bashrc`，可直接使用 `gsub` 这类 alias。
+- 若提交命令是脚本路径且遇到 `Permission denied`，扩展会自动回退为 `bash <你的脚本命令>` 重试一次。
 - 当调度器状态不可用时，扩展会根据输出文件内容推断“完成/失败”。
 
 ## Development

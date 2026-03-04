@@ -10,7 +10,7 @@
     "log visualization",
     "pbs"
   ],
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "linsay",
   "license": "MIT",
   "homepage": "https://github.com/cfx2020/Gaussian-Copilot",
@@ -181,13 +181,13 @@
       "properties": {
         "chemAssist.submit.runCommandTemplate": {
           "type": "string",
-          "default": "g16 {file}",
+          "default": "gsub {file}",
           "description": "Run submit command template. Supported placeholders: {file}, {basename}, {dir}."
         },
         "chemAssist.submit.preCommands": {
           "type": "array",
           "default": [
-            "source /etc/profile"
+            "source ~/.bashrc"
           ],
           "items": {
             "type": "string"

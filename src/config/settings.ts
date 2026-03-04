@@ -33,8 +33,8 @@ export interface ChemAssistSettings {
 export function getSettings(): ChemAssistSettings {
   const cfg = vscode.workspace.getConfiguration('chemAssist');
   return {
-    runCommandTemplate: cfg.get<string>('submit.runCommandTemplate', cfg.get<string>('submit.localCommandTemplate', 'g16 {file}')),
-    preCommands: cfg.get<string[]>('submit.preCommands', ['source /etc/profile']),
+    runCommandTemplate: cfg.get<string>('submit.runCommandTemplate', cfg.get<string>('submit.localCommandTemplate', 'gsub {file}')),
+    preCommands: cfg.get<string[]>('submit.preCommands', ['source ~/.bashrc']),
     pbs: {
       queue: cfg.get<string>('pbs.queue', ''),
       nodes: cfg.get<number>('pbs.nodes', 1),

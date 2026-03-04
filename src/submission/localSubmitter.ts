@@ -1,4 +1,5 @@
 import { exec } from 'child_process';
+import { existsSync } from 'fs';
 import * as path from 'path';
 import { ChemAssistSettings } from '../config/settings';
 import { JobStatusResult, SchedulerJobSummary, SubmitRequest, SubmitResult, Submitter } from './types';
@@ -43,16 +44,92 @@ function isJobMissingInScheduler(message: string): boolean {
     || lower.includes('does not exist');
 }
 
-function runCommand(command: string, cwd?: string): Promise<{ stdout: string; stderr: string }> {
+function resolveUnixShell(): string | undefined {
+  const candidates = ['/bin/bash', '/usr/bin/bash', process.env.SHELL];
+  for (const candidate of candidates) {
+    if (candidate && existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function buildCommandWithPrelude(command: string, preCommands: string[], shell?: string): { executableCommand: string; shell?: string } {
+  const normalizedPreCommands = preCommands
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  if (process.platform === 'win32') {
+    if (!normalizedPreCommands.length) {
+      return { executableCommand: command };
+    }
+    return {
+      executableCommand: `${normalizedPreCommands.join(' && ')} && ${command}`,
+    };
+  }
+
+  const prelude: string[] = [];
+  const shellLooksLikeBash = !!shell && /(?:^|\/)bash(?:\.exe)?$/i.test(shell);
+  if (shellLooksLikeBash) {
+    prelude.push('shopt -s expand_aliases >/dev/null 2>&1 || true');
+    prelude.push('[ -f ~/.bashrc ] && source ~/.bashrc || true');
+  } else {
+    prelude.push('[ -f ~/.profile ] && . ~/.profile || true');
+  }
+
+  prelude.push(...normalizedPreCommands);
+  prelude.push(command);
+
+  return {
+    executableCommand: prelude.join('\n'),
+    shell,
+  };
+}
+
+function executeCommand(command: string, cwd?: string, shell?: string): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    exec(command, { cwd }, (error, stdout, stderr) => {
+    exec(command, { cwd, shell }, (error, stdout, stderr) => {
       if (error) {
-        reject(new Error(`${error.message}\n${stderr}`));
+        reject(new Error(`${error.message}\n${stderr}`.trim()));
         return;
       }
       resolve({ stdout, stderr });
     });
   });
+}
+
+function shouldRetryWithBash(command: string, message: string): boolean {
+  if (process.platform === 'win32') {
+    return false;
+  }
+
+  if (!/permission denied|eacces/i.test(message)) {
+    return false;
+  }
+
+  const trimmed = command.trim();
+  if (!trimmed || /^bash\b/i.test(trimmed)) {
+    return false;
+  }
+
+  return trimmed.includes('/') || /\.sh(?:\s|$)/i.test(trimmed);
+}
+
+async function runCommand(command: string, cwd?: string, preCommands: string[] = []): Promise<{ stdout: string; stderr: string }> {
+  const shell = process.platform === 'win32' ? undefined : resolveUnixShell();
+  const firstRun = buildCommandWithPrelude(command, preCommands, shell);
+
+  try {
+    return await executeCommand(firstRun.executableCommand, cwd, firstRun.shell);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!shouldRetryWithBash(command, message)) {
+      throw error;
+    }
+
+    const retryRun = buildCommandWithPrelude(`bash ${command}`, preCommands, shell);
+    return executeCommand(retryRun.executableCommand, cwd, retryRun.shell);
+  }
 }
 
 function parseQstatUserOutput(stdout: string): SchedulerJobSummary[] {
@@ -108,7 +185,7 @@ export class LocalSubmitter implements Submitter {
   async submit(request: SubmitRequest): Promise<SubmitResult> {
     const command = renderCommand(this.settings.runCommandTemplate, request);
     const cwd = path.dirname(request.localFilePath);
-    const result = await runCommand(command, cwd);
+    const result = await runCommand(command, cwd, this.settings.preCommands);
     const output = `${result.stdout}\n${result.stderr}`.trim();
     const parsedJobId = extractJobId(output);
     const fallbackJobId = `local-${Date.now()}`;
@@ -137,7 +214,7 @@ export class LocalSubmitter implements Submitter {
       };
     }
 
-    const result = await runCommand(`qstat -f ${jobId}`);
+    const result = await runCommand(`qstat -f ${jobId}`, undefined, this.settings.preCommands);
     const stateMatch = result.stdout.match(/job_state\s*=\s*([A-Z])/);
     const state = stateMatch ? normalizePbsState(stateMatch[1]) : 'unknown';
 
@@ -163,7 +240,7 @@ export class LocalSubmitter implements Submitter {
 
     let result;
     try {
-      result = await runCommand(`qdel ${jobId}`);
+      result = await runCommand(`qdel ${jobId}`, undefined, this.settings.preCommands);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (isJobMissingInScheduler(message)) {
@@ -192,7 +269,7 @@ export class LocalSubmitter implements Submitter {
       return [];
     }
 
-    const result = await runCommand(`qstat -u ${username}`);
+    const result = await runCommand(`qstat -u ${username}`, undefined, this.settings.preCommands);
     return parseQstatUserOutput(result.stdout);
   }
 }

@@ -48,6 +48,10 @@ function normalizeDiscoveredFileName(name: string): string {
   return name;
 }
 
+function toDisplayJobName(fileName: string): string {
+  return fileName.replace(/\.gjf$/i, '');
+}
+
 function parseSchedulerHintDirs(stdout: string): string[] {
   const dirs: string[] = [];
 
@@ -147,10 +151,11 @@ function detectFailureReason(content: string): string | undefined {
 
 class JobTreeItem extends vscode.TreeItem {
   constructor(public readonly job: JobRecord) {
-    super(job.fileName, vscode.TreeItemCollapsibleState.None);
+    const displayName = toDisplayJobName(job.fileName);
+    super(displayName, vscode.TreeItemCollapsibleState.None);
     this.description = getStateLabel(job.state);
     const reasonLine = job.failureReason ? `\n失败原因: ${job.failureReason}` : '';
-    this.tooltip = `${job.fileName}\nJobID: ${job.id}\n状态: ${getStateLabel(job.state)}\n提交时间: ${job.submittedAt}${reasonLine}`;
+    this.tooltip = `${displayName}\nJobID: ${job.id}\n状态: ${getStateLabel(job.state)}\n提交时间: ${job.submittedAt}${reasonLine}`;
     this.contextValue = 'chemAssistJobItem';
     this.iconPath = getStateIcon(job.state);
   }
