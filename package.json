@@ -10,7 +10,7 @@
     "log visualization",
     "pbs"
   ],
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "linsay",
   "license": "MIT",
   "homepage": "https://github.com/cfx2020/Gaussian-Copilot",
@@ -36,6 +36,13 @@
     "package.json"
   ],
   "main": "./dist/extension.js",
+  "activationEvents": [
+    "onCommand:chemAssist.visualizeLog",
+    "onCommand:chemAssist.submitGjf",
+    "onCommand:chemAssist.batchSubmitGjf",
+    "onCommand:chemAssist.batchVisualizeLog",
+    "onView:chemAssist.jobView"
+  ],
   "icon": "media/icon-gaussian-copilot.png",
   "contributes": {
     "commands": [

@@ -133,25 +133,32 @@ async function runCommand(command: string, cwd?: string, preCommands: string[] =
 }
 
 function parseQstatUserOutput(stdout: string): SchedulerJobSummary[] {
-  const lines = stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => !!line);
-
+  const lines = stdout.split(/\r?\n/);
   const jobs: SchedulerJobSummary[] = [];
   const seen = new Set<string>();
 
+  let inDataSection = false;
+
   for (const line of lines) {
-    if (/^job\s+id/i.test(line) || /^-+$/.test(line)) {
+    // Skip header and separator lines
+    if (!line || /^\s*job\s+id|^\s*-+\s*$/i.test(line)) {
+      inDataSection = /^\s*-+\s*$/.test(line);
       continue;
     }
 
-    const columns = line.split(/\s+/);
-    if (columns.length < 4) {
+    const trimmed = line.trim();
+    if (!trimmed) {
       continue;
     }
 
-    const id = columns[0];
+    // Parse job line: extract Job ID (always first field)
+    // Job ID format: digits.hostname (e.g., 1234.server)
+    const jobIdMatch = trimmed.match(/^(\d+[\.\w.-]*)\s+/);
+    if (!jobIdMatch) {
+      continue;
+    }
+
+    const id = jobIdMatch[1];
     if (!/^\d+(\.[\w.-]+)?$/.test(id)) {
       continue;
     }
@@ -160,14 +167,46 @@ function parseQstatUserOutput(stdout: string): SchedulerJobSummary[] {
       continue;
     }
 
-    const name = columns[3] ?? id;
+    // Extract state: single uppercase letter (Q/R/C/E/H)
+    // Usually appears near the end of the line
     let rawState = '';
-    for (let i = columns.length - 1; i >= 0; i -= 1) {
-      if (/^[A-Z]$/.test(columns[i])) {
-        rawState = columns[i];
-        break;
+    const stateMatch = line.match(/\s([QRCEH])\s+/);
+    if (stateMatch) {
+      rawState = stateMatch[1];
+    }
+
+    // If state not found with spaces, try to find it at end or near end
+    if (!rawState) {
+      const parts = trimmed.split(/\s+/);
+      if (parts.length > 0) {
+        // Look from right to left for state letter
+        for (let i = parts.length - 1; i >= 0; i--) {
+          if (/^[QRCEH]$/.test(parts[i])) {
+            rawState = parts[i];
+            break;
+          }
+        }
       }
     }
+
+    // Extract name: everything after Job ID until we hit extra whitespace
+    // or until we find the state field
+    // The name is the second field after Job ID
+    const idEndIndex = jobIdMatch[0].length;
+    const remainder = trimmed.substring(idEndIndex).trim();
+    const nameMatch = remainder.match(/^(\S+(?:\s+\S+)*?)(?:\s{2,}|\s+[A-Z])/);
+    
+    let name = id;
+    if (nameMatch) {
+      name = nameMatch[1];
+    } else {
+      // Fallback: take second space-separated field as name
+      const parts = remainder.split(/\s+/);
+      if (parts.length > 0 && parts[0]) {
+        name = parts[0];
+      }
+    }
+
     jobs.push({
       id,
       name,
@@ -269,7 +308,21 @@ export class LocalSubmitter implements Submitter {
       return [];
     }
 
-    const result = await runCommand(`qstat -u ${username}`, undefined, this.settings.preCommands);
+    // Use -a flag to show all job states, which often provides better formatting
+    // of long job names. Fallback to -u if -a doesn't work
+    let result;
+    try {
+      result = await runCommand(`qstat -a -u ${username}`, undefined, this.settings.preCommands);
+    } catch (e) {
+      // Fallback to original command if -a is not supported
+      try {
+        result = await runCommand(`qstat -u ${username}`, undefined, this.settings.preCommands);
+      } catch (innerE) {
+        const message = innerE instanceof Error ? innerE.message : String(innerE);
+        throw new Error(`Failed to query job status: ${message}`);
+      }
+    }
+
     return parseQstatUserOutput(result.stdout);
   }
 }

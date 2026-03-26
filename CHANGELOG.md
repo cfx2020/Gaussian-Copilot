@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.2] - 2026-03-26
+
+### Changed
+- 作业看板作业名称识别改进：改用正则模式替代固定列索引解析 `qstat -u <username>` 的输出。
+- `listUserJobs()` 命令改为优先使用 `qstat -a -u <username>`，以获得更好的格式化输出和长名支持。
+
+### Fixed
+- 修复长作业名称被截断导致不同作业被错误识别为同一个的问题（如 `ts1-fix1-search-ts1` 与 `ts1-fix1-search-ts` 混淆）。
+- 改进 `parseQstatUserOutput()` 使其能够正确处理列对齐变化的 qstat 输出。
+
 ## [0.3.1] - 2026-03-04
 
 ### Changed
