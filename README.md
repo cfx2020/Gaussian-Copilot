@@ -2,7 +2,7 @@
 
 Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.out` 可视化、批量操作与作业跟踪。
 
-![alt text](PixPin_2026-04-01_00-55-39.jpg)
+![alt text](image/PixPin_2026-04-01_00-55-39.jpg)
 
 ## Why Gaussian Copilot
 
@@ -26,7 +26,7 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 - 能量变化曲线（支持点选联动）
 - Overview / Thermo / Next 信息面板
 - Next 面板支持一键生成 TS / Sol / IRC 后续输入
-![alt text](PixPin_2026-04-01_00-56-39.jpg)
+![alt text](image/PixPin_2026-04-01_00-56-39.jpg)
 
 ### 4) 作业时间线与状态跟踪
 - 按时间批次分组显示提交记录
@@ -34,13 +34,13 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 - 状态显示：排队中 / 运行中 / 已完成 / 失败 / 已取消
 - 失败作业可显示原因摘要（如 L9999、SCF 不收敛等）
 - 支持杀作业、重新提交选中 `.gjf`、删除单条、清理已结束作业
-![alt text](PixPin_2026-04-01_00-58-56.jpg)
+![alt text](image/PixPin_2026-04-01_00-58-56.jpg)
 
 ### 5) 作业结果快速定位
 - 单击作业项即可跳转对应 `.log/.out`
 - 作业右键可直接“可视化对应log/out”
 - 作业右键支持“可视化选中log/out”“打开选中gjf”“下载选中log/out”
-![alt text](PixPin_2026-04-01_00-59-31.jpg)
+![alt text](image/PixPin_2026-04-01_00-59-31.jpg)
 
 ## 🚀 Quick Start
 
