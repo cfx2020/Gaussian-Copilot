@@ -5,7 +5,7 @@ import { GaussianSummary } from '../parser/types';
 
 export interface ViewerRenderOptions {
   backgroundColor: string;
-  style: 'ballStick' | 'stick' | 'sphere' | 'line';
+  style: 'ballStick' | 'stick' | 'sphere' | 'line' | 'cpkBallStick' | 'licorice' | 'spacefill';
   stickRadius: number;
   sphereScale: number;
   vibrationFps: number;
@@ -139,10 +139,24 @@ function upgradeRouteBasisForSolvent(route: string): string {
 
   const upgraded = route
     .replace(/\/\s*lanl2dz\b/ig, '/SDD')
+    .replace(/\/\s*6-31\s*g\s*\(\s*d\s*\)\b/ig, '/6-311++G**')
+    .replace(/\/\s*6-31\s*g\s*\(\s*d\s*,\s*p\s*\)\b/ig, '/6-311++G**')
     .replace(/\/\s*6-31\s*\+?\+?g\*\*(?!\*)/ig, '/6-311++G**')
     .replace(/\/\s*6-31\s*g\*(?!\*)/ig, '/6-311++G**');
 
   return upgraded;
+}
+
+function isMetalAtomicNumber(atomicNumber: number): boolean {
+  // Common non-metals and metalloids are excluded.
+  const nonMetals = new Set([1, 2, 5, 6, 7, 8, 9, 10, 14, 15, 16, 17, 18, 33, 34, 35, 36, 52, 53, 54]);
+  return Number.isFinite(atomicNumber) && atomicNumber > 0 && !nonMetals.has(atomicNumber);
+}
+
+function hasMetalAtoms(summary: GaussianSummary): boolean {
+  const lastFrame = summary.frames[summary.frames.length - 1];
+  const atoms = lastFrame?.atoms ?? [];
+  return atoms.some((atom) => isMetalAtomicNumber(atom.atomicNumber));
 }
 
 function normalizeLink0(
@@ -304,13 +318,16 @@ async function buildNextInputPlan(
   }
 
   if (kind === 'sol') {
-    route = upgradeRouteBasisForSolvent(route);
+    const shouldUpgradeBasis = !routeHasGenLikeBasis(route) && !hasMetalAtoms(summary);
+    if (shouldUpgradeBasis) {
+      route = upgradeRouteBasisForSolvent(route);
+    }
   }
 
   const frame = summary.frames[Math.max(0, Math.min(summary.frames.length - 1, frameIndex))];
   const coordinates = frame ? atomsToGaussianCoordinates(frame.atoms) : '';
   const basisTail = kind === 'sol'
-    ? upgradeBasisTextForSolvent(template.basisTail)
+    ? (routeHasGenLikeBasis(route) ? upgradeBasisTextForSolvent(template.basisTail) : template.basisTail)
     : template.basisTail;
 
   const lines: string[] = [];
@@ -496,33 +513,331 @@ export function showLogPanel(
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gaussian 可视化</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 12px; margin: 0; box-sizing: border-box; color: var(--vscode-editor-foreground); }
-    .grid { display: grid; grid-template-columns: 300px minmax(520px, 1fr) minmax(260px, 28%); gap: 12px; align-items: stretch; }
-    .card { border: 1px solid var(--vscode-panel-border); border-radius: 10px; padding: 12px; }
-    .left-panel, .center-panel, .right-panel { min-height: 500px; }
-    .left-panel { display: grid; align-content: start; gap: 10px; background: var(--vscode-sideBar-background); }
-    .center-panel { display: flex; align-items: stretch; }
-    .right-panel { display: grid; align-content: start; }
-    .viewer-wrap { width: 100%; height: 100%; min-height: 474px; overflow: hidden; border: 1px solid #3f3f46; border-radius: 6px; box-sizing: border-box; padding: 0; margin: 0; background: #ffffff; }
+    :root {
+      --gc-accent: #21c7a8;
+      --gc-surface: color-mix(in srgb, var(--vscode-editorWidget-background) 86%, #0b1320);
+      --gc-border: color-mix(in srgb, var(--vscode-panel-border) 76%, #89f0dd);
+      --gc-text-soft: color-mix(in srgb, var(--vscode-descriptionForeground) 90%, #b8fff2);
+      --gc-shadow: 0 16px 30px rgba(0, 0, 0, 0.22);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Avenir Next', 'SF Pro Display', 'Segoe UI', sans-serif;
+      padding: 14px;
+      margin: 0;
+      color: var(--vscode-editor-foreground);
+      background:
+        radial-gradient(1200px 580px at -10% -20%, rgba(36, 188, 157, 0.25), transparent 55%),
+        radial-gradient(1000px 520px at 110% 115%, rgba(56, 136, 212, 0.20), transparent 60%),
+        var(--vscode-editor-background);
+      min-height: 100vh;
+    }
+    .stage {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 10px;
+      height: calc(100vh - 28px);
+      min-height: 680px;
+    }
+    .card {
+      border: 1px solid var(--gc-border);
+      border-radius: 14px;
+      padding: 12px;
+      background: linear-gradient(170deg, color-mix(in srgb, var(--gc-surface) 94%, #205568), color-mix(in srgb, var(--gc-surface) 88%, #111922));
+      box-shadow: var(--gc-shadow);
+      backdrop-filter: blur(8px);
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      background: linear-gradient(130deg, rgba(12, 28, 38, 0.50), rgba(32, 76, 94, 0.62));
+      border: 1px solid color-mix(in srgb, var(--gc-border) 64%, transparent);
+      border-radius: 10px;
+      min-height: 48px;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+    .toolbar-spacer {
+      flex: 1;
+      min-width: 12px;
+    }
+    .toolbar-brand {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: inherit;
+      white-space: nowrap;
+      margin-left: auto;
+      margin-right: 6px;
+      padding: 0;
+      border-radius: 0;
+      background: transparent;
+      border: 0;
+    }
+    .toolbar-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      border: 1px solid color-mix(in srgb, var(--gc-border) 68%, transparent);
+      background: rgba(35, 96, 93, 0.34);
+      color: var(--gc-text-soft);
+      border-radius: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      min-height: 42px;
+      min-width: 60px;
+      flex-grow: 0;
+      flex-shrink: 0;
+      transition: background 0.12s ease, border-color 0.12s ease;
+    }
+    .toolbar-btn:hover {
+      background: rgba(35, 96, 93, 0.56);
+      border-color: var(--gc-border);
+    }
+    .toolbar-btn.active {
+      background: rgba(21, 177, 163, 0.45);
+      border-color: var(--gc-accent);
+      color: #d5fff5;
+    }
+    .toolbar-btn-icon {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .toolbar-btn-label {
+      font-size: 10px;
+      white-space: nowrap;
+    }
+    .toolbar-sep {
+      width: 1px;
+      height: 32px;
+      background: color-mix(in srgb, var(--gc-border) 52%, transparent);
+      flex-shrink: 0;
+    }
+    .floating-panel {
+      position: absolute;
+      top: 70px;
+      left: 10px;
+      width: min(320px, calc(100% - 20px));
+      max-height: calc(100% - 80px);
+      overflow-y: auto;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid color-mix(in srgb, var(--gc-border) 86%, transparent);
+      background: linear-gradient(170deg, rgba(10, 28, 38, 0.94), rgba(13, 32, 46, 0.88));
+      backdrop-filter: blur(8px);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+      z-index: 10;
+      display: none;
+    }
+    .floating-panel.open {
+      display: block;
+      animation: slideDown 0.18s ease-out;
+    }
+    .info-drawer-curve {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid color-mix(in srgb, var(--gc-border) 52%, transparent);
+    }
+    #curve {
+      width: 100%;
+      height: 200px;
+    }
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .panel-title {
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--gc-text-soft);
+      margin-bottom: 10px;
+    }
+    .panel-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .panel-field label {
+      font-size: 11px;
+      color: var(--gc-text-soft);
+      font-weight: 500;
+    }
+    .panel-field select,
+    .panel-field input[type='color'],
+    .panel-field input[type='range'],
+    .panel-field input[type='checkbox'] {
+      font-size: 11px;
+    }
+    .panel-field select {
+      height: 28px;
+      padding: 4px 20px 4px 8px;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background: color-mix(in srgb, var(--vscode-dropdown-background) 74%, #153245);
+      color: var(--vscode-dropdown-foreground);
+      border: 1px solid color-mix(in srgb, var(--vscode-dropdown-border, var(--gc-border)) 70%, transparent);
+      border-radius: 6px;
+      background-image:
+        linear-gradient(45deg, transparent 50%, var(--vscode-foreground) 50%),
+        linear-gradient(135deg, var(--vscode-foreground) 50%, transparent 50%);
+      background-position: calc(100% - 10px) 10px, calc(100% - 6px) 10px;
+      background-size: 4px 4px, 4px 4px;
+      background-repeat: no-repeat;
+    }
+    .panel-field input[type='color'] {
+      height: 32px;
+      border: 1px solid color-mix(in srgb, var(--gc-border) 68%, transparent);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .panel-range-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .panel-field input[type='range'] {
+      flex: 1;
+      height: 4px;
+      accent-color: var(--gc-accent);
+    }
+    .panel-spinner {
+      font-size: 11px;
+      color: var(--gc-text-soft);
+      min-width: 36px;
+      text-align: center;
+    }
+    .panel-field input[type='checkbox'] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: var(--vscode-checkbox-selectBackground);
+    }
+    .panel-buttons {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .panel-btn {
+      flex: 1;
+      min-width: 80px;
+      padding: 6px 10px;
+      border: 1px solid color-mix(in srgb, var(--gc-border) 82%, transparent);
+      background: linear-gradient(160deg, rgba(35, 96, 93, 0.56), rgba(26, 64, 91, 0.54));
+      color: color-mix(in srgb, var(--vscode-button-foreground, #ffffff) 95%, #d6fff8);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: filter 0.12s ease;
+    }
+    .panel-btn:hover {
+      filter: brightness(1.08);
+    }
+    .viewer-stage {
+      position: relative;
+      min-height: 0;
+      border: 1px solid color-mix(in srgb, var(--gc-border) 84%, transparent);
+      border-radius: 12px;
+      overflow: hidden;
+      background: linear-gradient(170deg, rgba(9, 20, 34, 0.34), rgba(9, 17, 26, 0.15));
+    }
+    .viewer-head {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+      color: var(--gc-text-soft);
+      font-size: 11px;
+      letter-spacing: 0.02em;
+      text-transform: none;
+    }
+    .viewer-wrap {
+      width: 100%;
+      height: 100%;
+      min-height: 390px;
+      overflow: hidden;
+      box-sizing: border-box;
+      padding: 0;
+      margin: 0;
+      background: #ffffff;
+    }
     #viewer { width: 100%; height: 100%; display: block; margin: 0; padding: 0; position: relative; }
     #viewer canvas { width: 100% !important; height: 100% !important; display: block; }
-    #curve { width: 100%; height: 220px; }
-    .stat { margin-bottom: 6px; }
-    .controls { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
-    .control-section {
-      border: 1px solid var(--vscode-panel-border);
-      border-radius: 8px;
+    .info-drawer {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: min(360px, calc(100% - 24px));
+      max-height: calc(100% - 20px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      z-index: 6;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+      border: 1px solid color-mix(in srgb, var(--gc-border) 86%, transparent);
+      border-radius: 12px;
+      background: linear-gradient(170deg, rgba(10, 28, 38, 0.92), rgba(13, 32, 46, 0.88));
+      backdrop-filter: blur(8px);
+    }
+    .info-drawer-content {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+    .info-drawer-tabs {
+      flex-shrink: 0;
       padding: 8px;
-      background: var(--vscode-editorWidget-background);
+      border-bottom: 1px solid color-mix(in srgb, var(--gc-border) 52%, transparent);
+    }
+    .info-drawer-panels {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    .info-drawer-curve {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid color-mix(in srgb, var(--gc-border) 52%, transparent);
+    }
+    .info-drawer.collapsed {
+      transform: translateX(calc(100% + 18px));
+      opacity: 0;
+      pointer-events: none;
+    }
+    .curve-card {
+      padding: 8px;
+    }
+    .control-section {
+      border: 1px solid color-mix(in srgb, var(--gc-border) 88%, transparent);
+      border-radius: 10px;
+      padding: 8px;
+      background: linear-gradient(160deg, rgba(22, 47, 61, 0.50), rgba(11, 24, 37, 0.40));
     }
     .control-title {
-      font-weight: 600;
+      font-weight: 700;
       margin-bottom: 8px;
-      font-size: 12px;
-      color: var(--vscode-foreground);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--gc-text-soft);
     }
-    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
     .form-grid-1 { display: grid; grid-template-columns: 1fr; gap: 8px; }
     .field {
       display: flex;
@@ -533,7 +848,7 @@ export function showLogPanel(
     .field label {
       width: 54px;
       font-size: 12px;
-      color: var(--vscode-descriptionForeground);
+      color: var(--gc-text-soft);
       flex: 0 0 auto;
     }
     .field select,
@@ -545,9 +860,9 @@ export function showLogPanel(
       appearance: none;
       -webkit-appearance: none;
       -moz-appearance: none;
-      background: var(--vscode-dropdown-background);
+      background: color-mix(in srgb, var(--vscode-dropdown-background) 74%, #153245);
       color: var(--vscode-dropdown-foreground);
-      border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+      border: 1px solid color-mix(in srgb, var(--vscode-dropdown-border, var(--gc-border)) 74%, transparent);
       border-radius: 6px;
       height: 26px;
       padding: 0 26px 0 8px;
@@ -568,6 +883,7 @@ export function showLogPanel(
     .field input[type="range"] {
       max-width: 130px;
       height: 4px;
+      accent-color: var(--gc-accent);
     }
     .field input[type="checkbox"] {
       width: 14px;
@@ -578,7 +894,7 @@ export function showLogPanel(
       min-width: 28px;
       text-align: right;
       font-size: 12px;
-      color: var(--vscode-foreground);
+      color: color-mix(in srgb, var(--vscode-foreground) 92%, #d5fff5);
     }
     .action-row {
       display: flex;
@@ -587,157 +903,288 @@ export function showLogPanel(
       margin-top: 8px;
     }
     .action-row button {
-      border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
-      background: var(--vscode-button-secondaryBackground);
-      color: var(--vscode-button-secondaryForeground);
+      border: 1px solid color-mix(in srgb, var(--gc-border) 82%, transparent);
+      background: linear-gradient(160deg, rgba(35, 96, 93, 0.56), rgba(26, 64, 91, 0.54));
+      color: color-mix(in srgb, var(--vscode-button-foreground, #ffffff) 95%, #d6fff8);
       border-radius: 6px;
       padding: 4px 10px;
       cursor: pointer;
+      transition: transform 0.12s ease, filter 0.12s ease;
     }
     .action-row button:hover {
-      background: var(--vscode-button-secondaryHoverBackground);
+      filter: brightness(1.08);
+      transform: translateY(-1px);
     }
     #mode { min-width: 0; }
     .section-title { font-weight: 600; margin-top: 8px; margin-bottom: 4px; }
-    .hint { opacity: 0.8; font-size: 12px; }
+    .hint { opacity: 0.8; font-size: 12px; color: var(--gc-text-soft); }
     .tabs { display: flex; gap: 8px; margin-bottom: 8px; }
-    .tab-btn { border: 1px solid var(--vscode-panel-border); background: transparent; color: inherit; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
-    .tab-btn.active { background: var(--vscode-button-secondaryBackground); }
+    .tab-btn { border: 1px solid color-mix(in srgb, var(--gc-border) 82%, transparent); background: transparent; color: inherit; border-radius: 8px; padding: 5px 11px; cursor: pointer; }
+    .tab-btn.active { background: linear-gradient(160deg, rgba(30, 108, 98, 0.62), rgba(20, 72, 98, 0.58)); color: #dffff6; }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
     .kv-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .kv-table td { border-bottom: 1px solid var(--vscode-panel-border); padding: 4px 6px; vertical-align: top; }
+    .kv-table td { border-bottom: 1px solid color-mix(in srgb, var(--gc-border) 72%, transparent); padding: 5px 6px; vertical-align: top; }
     .kv-table td:first-child { width: 52%; opacity: 0.95; }
+    .solvent-select {
+      flex: 1;
+      min-width: 220px;
+      border: 1px solid color-mix(in srgb, var(--gc-border) 82%, transparent);
+      border-radius: 6px;
+      padding: 4px 8px;
+      background: color-mix(in srgb, var(--vscode-dropdown-background) 74%, #153245);
+      color: var(--vscode-dropdown-foreground);
+    }
     @media (max-width: 1200px) {
-      .grid { grid-template-columns: 1fr; }
-      .left-panel, .center-panel, .right-panel { min-height: auto; }
-      .viewer-wrap { min-height: 420px; }
+      .toolbar {
+        gap: 6px;
+        padding: 6px;
+      }
+      .toolbar-btn {
+        padding: 5px 10px;
+        min-height: 40px;
+        font-size: 12px;
+      }
+      .toolbar-btn-icon {
+        font-size: 16px;
+      }
+    }
+    @media (max-width: 900px) {
+      .toolbar {
+        gap: 5px;
+        padding: 5px;
+      }
+      .toolbar-btn {
+        padding: 4px 8px;
+        min-height: 38px;
+        min-width: 50px;
+        font-size: 11px;
+      }
+      .toolbar-btn-icon {
+        font-size: 14px;
+      }
+      .toolbar-btn-label {
+        font-size: 9px;
+      }
+      .toolbar-sep {
+        height: 28px;
+      }
+    }
+    @media (max-width: 760px) {
+      .viewer-head {
+        display: none;
+      }
+      .stage {
+        grid-template-rows: auto minmax(300px, 1fr);
+        height: calc(100vh - 18px);
+        min-height: 540px;
+      }
+      .toolbar {
+        height: 34px;
+        gap: 4px;
+        padding: 4px 5px;
+      }
+      .toolbar-brand {
+        font-size: 12px;
+        padding: 3px 6px;
+      }
+      .toolbar-icon-btn {
+        width: 24px;
+        height: 24px;
+        font-size: 10px;
+      }
+      .toolbar-divider {
+        height: 16px;
+        margin: 0 2px;
+      }
+      #curve {
+        height: 160px;
+      }
     }
   </style>
 </head>
 <body>
-  <h2>Gaussian Copilot 日志可视化</h2>
-  <div class="grid">
-    <div class="card left-panel">
-      <div class="control-section">
-        <div class="control-title">渲染样式</div>
-        <div class="form-grid-1">
-          <div class="field">
-            <label>样式</label>
-            <select id="renderStyle">
-              <option value="ballStick">ball+stick</option>
-              <option value="stick">stick</option>
-              <option value="sphere">sphere</option>
-              <option value="line">line</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>背景</label>
-            <input id="bgColor" type="color" value="#ffffff" />
-          </div>
-          <div class="field">
-            <label>自动缩放</label>
-            <input id="autoZoom" type="checkbox" checked />
-          </div>
-          <div class="field">
-            <label>棒半径</label>
-            <input id="stickRadius" type="range" min="0.08" max="0.45" step="0.01" value="0.18" />
-            <span id="stickRadiusLabel">0.18</span>
-          </div>
-          <div class="field">
-            <label>球缩放</label>
-            <input id="sphereScale" type="range" min="0.1" max="0.7" step="0.01" value="0.25" />
-            <span id="sphereScaleLabel">0.25</span>
-          </div>
+  <div class="card stage">
+    <!-- 简化工具栏：只有主要按钮 -->
+    <div class="toolbar">
+      <button id="styleBtn" class="toolbar-btn" title="渲染样式与参数">
+        <span class="toolbar-btn-icon">⚙</span>
+        <span class="toolbar-btn-label">样式</span>
+      </button>
+
+      <button id="frameBtn" class="toolbar-btn" title="结构轨迹与循环">
+        <span class="toolbar-btn-icon">⏯</span>
+        <span class="toolbar-btn-label">轨迹</span>
+      </button>
+
+      <button id="vibrationBtn" class="toolbar-btn" title="振动模式与参数">
+        <span class="toolbar-btn-icon">≈</span>
+        <span class="toolbar-btn-label">振动</span>
+      </button>
+
+      <div class="toolbar-sep"></div>
+
+      <button id="infoToggleBtn" class="toolbar-btn" title="显示/隐藏右侧信息">
+        <span class="toolbar-btn-icon">ⓘ</span>
+        <span class="toolbar-btn-label">信息</span>
+      </button>
+
+      <div class="toolbar-spacer"></div>
+      <div class="toolbar-brand">Gaussian Copilot</div>
+    </div>
+
+    <!-- 浮动面板：样式 -->
+    <div id="stylePanel" class="floating-panel">
+      <div class="panel-title">渲染样式 & 参数</div>
+
+      <div class="panel-field">
+        <label>样式</label>
+        <select id="renderStyle">
+          <option value="ballStick">ball+stick</option>
+          <option value="cpkBallStick">CPK ball+stick</option>
+          <option value="stick">stick</option>
+          <option value="licorice">licorice</option>
+          <option value="sphere">sphere</option>
+          <option value="spacefill">spacefill</option>
+          <option value="line">line</option>
+        </select>
+      </div>
+
+      <div class="panel-field">
+        <label>背景色</label>
+        <input id="bgColor" type="color" value="#ffffff" />
+      </div>
+
+      <div class="panel-field">
+        <label>棒半径</label>
+        <div class="panel-range-group">
+          <input id="stickRadius" type="range" min="0.08" max="0.45" step="0.01" value="0.18" />
+          <span id="stickRadiusLabel" class="panel-spinner">0.18</span>
         </div>
       </div>
 
-      <div class="control-section">
-        <div class="control-title">结构控制</div>
-        <div class="field">
-          <label>帧</label>
+      <div class="panel-field">
+        <label>球缩放</label>
+        <div class="panel-range-group">
+          <input id="sphereScale" type="range" min="0.1" max="0.7" step="0.01" value="0.25" />
+          <span id="sphereScaleLabel" class="panel-spinner">0.25</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 浮动面板：轨迹控制 -->
+    <div id="framePanel" class="floating-panel">
+      <div class="panel-title">结构轨迹</div>
+
+      <div class="panel-field">
+        <label>轨迹</label>
+        <div class="panel-range-group">
           <input id="frame" type="range" min="0" max="0" value="0" />
-          <span id="frameLabel">0</span>
+          <span id="frameLabel" class="panel-spinner">0</span>
         </div>
-        <div class="hint">提示：点击下方能量曲线的点可跳转到对应结构帧。</div>
       </div>
 
-      <div class="control-section">
-        <div class="control-title">振动控制</div>
-        <div class="form-grid-1">
-          <div class="field">
-            <label>模式</label>
-            <select id="mode"></select>
-          </div>
-          <div class="field">
-            <label>振幅</label>
-            <input id="amp" type="range" min="0.1" max="3" step="0.1" value="1" />
-            <span id="ampLabel">1.0</span>
-          </div>
-        </div>
-        <div class="action-row">
-          <button id="vibStart">播放振动</button>
-          <button id="vibStop">停止振动</button>
-        </div>
+      <div class="panel-field">
+        <label style="display: flex; align-items: center; gap: 6px;">
+          <input id="loopPlay" type="checkbox" />
+          循环播放
+        </label>
+      </div>
+
+      <div class="panel-buttons">
+        <button id="loopPlayBtn" class="panel-btn">开始播放</button>
+        <button id="loopStopBtn" class="panel-btn">停止播放</button>
       </div>
     </div>
 
-    <div class="card center-panel">
+    <!-- 浮动面板：振动控制 -->
+    <div id="vibrationPanel" class="floating-panel">
+      <div class="panel-title">振动模式</div>
+
+      <div class="panel-field">
+        <label>模式</label>
+        <select id="mode"></select>
+      </div>
+
+      <div class="panel-field">
+        <label>振幅</label>
+        <div class="panel-range-group">
+          <input id="amp" type="range" min="0.1" max="3" step="0.1" value="1" />
+          <span id="ampLabel" class="panel-spinner">1.0</span>
+        </div>
+      </div>
+
+      <div class="panel-buttons" style="margin-top: 12px;">
+        <button id="vibToggleBtn" class="panel-btn">播放</button>
+      </div>
+    </div>
+
+    <!-- 3D查看器 -->
+    <div class="viewer-stage">
       <div class="viewer-wrap"><div id="viewer"></div></div>
-    </div>
 
-    <div class="card right-panel">
-      <div class="tabs">
-        <button id="tabOverviewBtn" class="tab-btn active">Overview</button>
-        <button id="tabThermoBtn" class="tab-btn">Thermo</button>
-        <button id="tabNextBtn" class="tab-btn">Next</button>
+      <div id="measurementInfo" class="viewer-head" style="position:absolute; left:12px; bottom:10px; z-index:4; background: rgba(8, 16, 24, 0.45); border: 1px solid rgba(120, 208, 186, 0.24); border-radius: 7px; padding: 6px 8px;">
+        <span>测量：点击原子进行选择</span>
+        <span>2个原子=键长，3个=键角，4个=二面角</span>
       </div>
-      <div id="tabOverview" class="tab-panel active">
-        <table class="kv-table" id="overviewTable"></table>
-      </div>
-      <div id="tabThermo" class="tab-panel">
-        <table class="kv-table" id="thermoTable"></table>
-      </div>
-      <div id="tabNext" class="tab-panel">
-        <div class="action-row" style="margin-top:0;">
-          <button id="nextTsBtn">从当前帧进行TS过渡态搜索</button>
-        </div>
-        <div class="action-row">
-          <button id="nextTsReadBtn">从当前帧进行TS过渡态搜索（read方法/更快）</button>
-        </div>
-        <div class="action-row">
-          <select id="nextSolvent" style="flex:1; min-width: 220px; border:1px solid var(--vscode-panel-border); border-radius:6px; padding:4px 8px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground);">
-            <option value="water">Water</option>
-            <option value="DMSO">DMSO</option>
-            <option value="nitro-methane">Nitro-methane</option>
-            <option value="acetonitrile">Acetonitrile</option>
-            <option value="methanol">Methanol</option>
-            <option value="ethanol">Ethanol</option>
-            <option value="acetone">Acetone</option>
-            <option value="dichloromethane">Dichloromethane</option>
-            <option value="dichloroethane">Dichloroethane</option>
-            <option value="THF">THF</option>
-            <option value="aniline">Aniline</option>
-            <option value="chlorobenzene">Chlorobenzene</option>
-            <option value="chloroform">Chloroform</option>
-            <option value="diethyl ether">Diethyl ether</option>
-            <option value="toluene">Toluene</option>
-            <option value="benzene">Benzene</option>
-            <option value="CCl4">CCl4</option>
-            <option value="cyclohexane">Cyclohexane</option>
-            <option value="heptane">Heptane</option>
-            <option value="__custom__">自定义...</option>
-          </select>
-          <button id="nextSolBtn">进行Sol溶剂化</button>
-        </div>
-        <div class="action-row">
-          <button id="nextIrcBtn">进行IRC路径验证</button>
+
+      <div id="infoDrawer" class="card info-drawer">
+        <div class="info-drawer-content">
+          <div class="info-drawer-tabs">
+            <button id="tabOverviewBtn" class="tab-btn active">Overview</button>
+            <button id="tabThermoBtn" class="tab-btn">Thermo</button>
+            <button id="tabNextBtn" class="tab-btn">Next</button>
+          </div>
+          <div class="info-drawer-panels">
+            <div id="tabOverview" class="tab-panel active">
+              <table class="kv-table" id="overviewTable"></table>
+              <div class="info-drawer-curve">
+                <div id="curve" style="height: 180px;"></div>
+              </div>
+            </div>
+            <div id="tabThermo" class="tab-panel">
+              <table class="kv-table" id="thermoTable"></table>
+            </div>
+            <div id="tabNext" class="tab-panel">
+              <div class="action-row" style="margin-top:0;">
+                <button id="nextTsBtn">从当前帧进行TS过渡态搜索</button>
+              </div>
+              <div class="action-row">
+                <button id="nextTsReadBtn">从当前帧进行TS过渡态搜索（read方法/更快）</button>
+              </div>
+              <div class="action-row">
+                <select id="nextSolvent" class="solvent-select">
+                  <option value="water">Water</option>
+                  <option value="DMSO">DMSO</option>
+                  <option value="nitro-methane">Nitro-methane</option>
+                  <option value="acetonitrile">Acetonitrile</option>
+                  <option value="methanol">Methanol</option>
+                  <option value="ethanol">Ethanol</option>
+                  <option value="acetone">Acetone</option>
+                  <option value="dichloromethane">Dichloromethane</option>
+                  <option value="dichloroethane">Dichloroethane</option>
+                  <option value="THF">THF</option>
+                  <option value="aniline">Aniline</option>
+                  <option value="chlorobenzene">Chlorobenzene</option>
+                  <option value="chloroform">Chloroform</option>
+                  <option value="diethyl ether">Diethyl ether</option>
+                  <option value="toluene">Toluene</option>
+                  <option value="benzene">Benzene</option>
+                  <option value="CCl4">CCl4</option>
+                  <option value="cyclohexane">Cyclohexane</option>
+                  <option value="heptane">Heptane</option>
+                  <option value="__custom__">自定义...</option>
+                </select>
+                <button id="nextSolBtn">进行Sol溶剂化</button>
+              </div>
+              <div class="action-row">
+                <button id="nextIrcBtn">进行IRC路径验证</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-  <div class="card" style="margin-top: 8px; padding: 8px;">
-    <div id="curve"></div>
   </div>
 
   <script nonce="${nonce}" src="${threeJsUri}"></script>
@@ -750,7 +1197,7 @@ export function showLogPanel(
       style: 'ballStick',
       stickRadius: 0.18,
       sphereScale: 0.25,
-      vibrationFps: 10,
+      vibrationFps: 60,
       maxDisplayedFrequencies: 180,
       autoZoomOnFrameChange: true,
     }, data.viewer || {});
@@ -758,12 +1205,23 @@ export function showLogPanel(
       backgroundColor: viewerCfg.backgroundColor || 'white'
     });
     const frameSlider = document.getElementById('frame');
+    const viewerElement = document.getElementById('viewer');
     const frameLabel = document.getElementById('frameLabel');
     const modeSelect = document.getElementById('mode');
     const ampSlider = document.getElementById('amp');
     const ampLabel = document.getElementById('ampLabel');
-    const vibStart = document.getElementById('vibStart');
-    const vibStop = document.getElementById('vibStop');
+    const stylePanel = document.getElementById('stylePanel');
+    const framePanel = document.getElementById('framePanel');
+    const vibrationPanel = document.getElementById('vibrationPanel');
+    const styleBtn = document.getElementById('styleBtn');
+    const frameBtn = document.getElementById('frameBtn');
+    const vibrationBtn = document.getElementById('vibrationBtn');
+    const vibToggleBtn = document.getElementById('vibToggleBtn');
+    const infoToggleBtn = document.getElementById('infoToggleBtn');
+    const loopPlayBtn = document.getElementById('loopPlayBtn');
+    const loopStopBtn = document.getElementById('loopStopBtn');
+    const loopPlayCheckbox = document.getElementById('loopPlay');
+    const infoDrawer = document.getElementById('infoDrawer');
     const tabOverviewBtn = document.getElementById('tabOverviewBtn');
     const tabThermoBtn = document.getElementById('tabThermoBtn');
     const tabNextBtn = document.getElementById('tabNextBtn');
@@ -779,21 +1237,219 @@ export function showLogPanel(
     const nextSolvent = document.getElementById('nextSolvent');
     const renderStyle = document.getElementById('renderStyle');
     const bgColor = document.getElementById('bgColor');
-    const autoZoom = document.getElementById('autoZoom');
     const stickRadius = document.getElementById('stickRadius');
     const sphereScale = document.getElementById('sphereScale');
     const stickRadiusLabel = document.getElementById('stickRadiusLabel');
     const sphereScaleLabel = document.getElementById('sphereScaleLabel');
+    const measurementInfo = document.getElementById('measurementInfo');
     const initialFrameIndex = Math.max(data.frameXyz.length - 1, 0);
     frameSlider.max = String(initialFrameIndex);
     frameSlider.value = String(initialFrameIndex);
     frameLabel.textContent = String(initialFrameIndex);
     let vibTimer = null;
-    let phase = 0;
     let frameRenderScheduled = false;
     let pendingFrameIndex = 0;
+    let currentFrameIndex = initialFrameIndex;
     let customSolvent = '';
     let resizeTimer = null;
+    let lastRenderedXyz = '';
+    let currentModel = null;
+    let styleDirty = true;
+    let infoCollapsed = true;
+    let loopPlayingFrames = false;
+    let currentLoopIndex = 0;
+    let pickedAtoms = [];
+    let lastAtomPickAt = 0;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let draggingView = false;
+    let suppressClearOnNextClick = false;
+    let vibrationCacheKey = '';
+    let vibrationCacheCycle = [];
+
+    function atomKey(atom) {
+      if (atom && Number.isFinite(atom.index)) {
+        return 'index:' + atom.index;
+      }
+      if (atom && Number.isFinite(atom.serial)) {
+        return 'serial:' + atom.serial;
+      }
+      return 'coord:' + Number(atom.x || 0).toFixed(5) + ',' + Number(atom.y || 0).toFixed(5) + ',' + Number(atom.z || 0).toFixed(5);
+    }
+
+    function atomName(atom) {
+      const elem = String(atom?.elem || 'X');
+      const idx = Number.isFinite(atom?.index) ? atom.index + 1 : (Number.isFinite(atom?.serial) ? atom.serial : '?');
+      return elem + idx;
+    }
+
+    function renderPickedAtomLabels() {
+      viewer.removeAllLabels();
+      for (const atom of pickedAtoms) {
+        if (!atom || !Number.isFinite(atom.x) || !Number.isFinite(atom.y) || !Number.isFinite(atom.z)) {
+          continue;
+        }
+        viewer.addLabel(atomName(atom), {
+          position: { x: Number(atom.x), y: Number(atom.y), z: Number(atom.z) },
+          fontSize: 12,
+          fontColor: '#d6fffa',
+          backgroundColor: '#0c3c4a',
+          backgroundOpacity: 0.68,
+          borderColor: '#22d3ee',
+          borderThickness: 1,
+          inFront: true,
+          showBackground: true,
+        });
+      }
+    }
+
+    function distanceBetween(a, b) {
+      const dx = Number(a.x) - Number(b.x);
+      const dy = Number(a.y) - Number(b.y);
+      const dz = Number(a.z) - Number(b.z);
+      return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    function angleByThreeAtoms(a, b, c) {
+      const bax = Number(a.x) - Number(b.x);
+      const bay = Number(a.y) - Number(b.y);
+      const baz = Number(a.z) - Number(b.z);
+      const bcx = Number(c.x) - Number(b.x);
+      const bcy = Number(c.y) - Number(b.y);
+      const bcz = Number(c.z) - Number(b.z);
+      const dot = bax * bcx + bay * bcy + baz * bcz;
+      const n1 = Math.sqrt(bax * bax + bay * bay + baz * baz);
+      const n2 = Math.sqrt(bcx * bcx + bcy * bcy + bcz * bcz);
+      if (!n1 || !n2) {
+        return 0;
+      }
+      const cosValue = Math.max(-1, Math.min(1, dot / (n1 * n2)));
+      return Math.acos(cosValue) * 180 / Math.PI;
+    }
+
+    function dihedralByFourAtoms(a, b, c, d) {
+      const b0 = { x: Number(b.x) - Number(a.x), y: Number(b.y) - Number(a.y), z: Number(b.z) - Number(a.z) };
+      const b1 = { x: Number(c.x) - Number(b.x), y: Number(c.y) - Number(b.y), z: Number(c.z) - Number(b.z) };
+      const b2 = { x: Number(d.x) - Number(c.x), y: Number(d.y) - Number(c.y), z: Number(d.z) - Number(c.z) };
+
+      const cross = (u, v) => ({
+        x: u.y * v.z - u.z * v.y,
+        y: u.z * v.x - u.x * v.z,
+        z: u.x * v.y - u.y * v.x,
+      });
+      const dot = (u, v) => (u.x * v.x + u.y * v.y + u.z * v.z);
+      const norm = (u) => Math.sqrt(dot(u, u));
+      const normalize = (u) => {
+        const n = norm(u) || 1;
+        return { x: u.x / n, y: u.y / n, z: u.z / n };
+      };
+
+      const n1 = normalize(cross(b0, b1));
+      const n2 = normalize(cross(b1, b2));
+      const m1 = cross(n1, normalize(b1));
+      const x = dot(n1, n2);
+      const y = dot(m1, n2);
+      return Math.atan2(y, x) * 180 / Math.PI;
+    }
+
+    function updateMeasurementInfo() {
+      const tips = '2个原子=键长，3个=键角，4个=二面角';
+      if (!pickedAtoms.length) {
+        measurementInfo.innerHTML = '<span>测量：点击原子进行选择</span><span>' + tips + '</span>';
+        return;
+      }
+      if (pickedAtoms.length === 1) {
+        measurementInfo.innerHTML = '<span>已选：' + atomName(pickedAtoms[0]) + '</span><span>' + tips + '</span>';
+        return;
+      }
+      if (pickedAtoms.length === 2) {
+        const value = distanceBetween(pickedAtoms[0], pickedAtoms[1]);
+        measurementInfo.innerHTML = '<span>键长 ' + atomName(pickedAtoms[0]) + '-' + atomName(pickedAtoms[1]) + '</span><span>' + value.toFixed(4) + ' Å</span>';
+        return;
+      }
+      if (pickedAtoms.length === 3) {
+        const value = angleByThreeAtoms(pickedAtoms[0], pickedAtoms[1], pickedAtoms[2]);
+        measurementInfo.innerHTML = '<span>键角 ' + atomName(pickedAtoms[0]) + '-' + atomName(pickedAtoms[1]) + '-' + atomName(pickedAtoms[2]) + '</span><span>' + value.toFixed(2) + '°</span>';
+        return;
+      }
+      const lastFour = pickedAtoms.slice(-4);
+      const value = dihedralByFourAtoms(lastFour[0], lastFour[1], lastFour[2], lastFour[3]);
+      measurementInfo.innerHTML = '<span>二面角 ' + atomName(lastFour[0]) + '-' + atomName(lastFour[1]) + '-' + atomName(lastFour[2]) + '-' + atomName(lastFour[3]) + '</span><span>' + value.toFixed(2) + '°</span>';
+    }
+
+    function resetPickedAtoms() {
+      pickedAtoms = [];
+      updateMeasurementInfo();
+      viewer.removeAllLabels();
+    }
+
+    function togglePickedAtom(atom) {
+      if (!atom) {
+        return;
+      }
+      lastAtomPickAt = Date.now();
+      const key = atomKey(atom);
+      const foundIndex = pickedAtoms.findIndex((item) => atomKey(item) === key);
+      if (foundIndex >= 0) {
+        pickedAtoms.splice(foundIndex, 1);
+      } else {
+        pickedAtoms.push(atom);
+        if (pickedAtoms.length > 4) {
+          pickedAtoms = pickedAtoms.slice(-4);
+        }
+      }
+      updateMeasurementInfo();
+      applyCurrentRenderStyle();
+      viewer.render();
+    }
+
+    viewerElement.addEventListener('mousedown', (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      draggingView = false;
+      dragStartX = event.clientX;
+      dragStartY = event.clientY;
+    });
+
+    viewerElement.addEventListener('mousemove', (event) => {
+      const dx = Math.abs(event.clientX - dragStartX);
+      const dy = Math.abs(event.clientY - dragStartY);
+      if (dx > 4 || dy > 4) {
+        draggingView = true;
+      }
+    });
+
+    viewerElement.addEventListener('mouseup', (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      if (draggingView) {
+        suppressClearOnNextClick = true;
+      }
+    });
+
+    viewerElement.addEventListener('click', () => {
+      if (suppressClearOnNextClick) {
+        suppressClearOnNextClick = false;
+        return;
+      }
+      if (!pickedAtoms.length) {
+        return;
+      }
+      // 原子点击会同步触发viewer click，这里短时间内忽略以防止刚选中就被清空。
+      if (Date.now() - lastAtomPickAt < 120) {
+        return;
+      }
+      resetPickedAtoms();
+      applyCurrentRenderStyle();
+      viewer.render();
+    });
+
+    function setVibrationToggleUi(isPlaying) {
+      vibToggleBtn.textContent = isPlaying ? '暂停' : '播放';
+      vibToggleBtn.title = isPlaying ? '暂停振动' : '播放振动';
+    }
 
     function xyzFromAtoms(atoms) {
       if (!atoms || !atoms.length) {
@@ -806,23 +1462,74 @@ export function showLogPanel(
       return atoms.length + '\\nanimated\\n' + lines.join('\\n') + '\\n';
     }
 
-    function renderXyz(xyz, keepView) {
-      viewer.clear();
-      viewer.addModel(xyz, 'xyz');
+    function applyCurrentRenderStyle() {
       const style = viewerCfg.style || 'ballStick';
-      const stickRadius = Number(viewerCfg.stickRadius ?? 0.18);
-      const sphereScale = Number(viewerCfg.sphereScale ?? 0.25);
+      const stickR = Number(viewerCfg.stickRadius ?? 0.18);
+      const sphereS = Number(viewerCfg.sphereScale ?? 0.25);
       if (style === 'stick') {
-        viewer.setStyle({}, { stick: { radius: stickRadius } });
+        viewer.setStyle({}, { stick: { radius: stickR } });
+      } else if (style === 'licorice') {
+        viewer.setStyle({}, { stick: { radius: Math.max(stickR, 0.28), colorscheme: 'Jmol' } });
       } else if (style === 'sphere') {
-        viewer.setStyle({}, { sphere: { scale: sphereScale } });
+        viewer.setStyle({}, { sphere: { scale: sphereS } });
+      } else if (style === 'spacefill') {
+        viewer.setStyle({}, { sphere: { scale: Math.max(sphereS, 0.58), colorscheme: 'Jmol' } });
       } else if (style === 'line') {
         viewer.setStyle({}, { line: { linewidth: 1.2 } });
+      } else if (style === 'cpkBallStick') {
+        viewer.setStyle({}, {
+          stick: { radius: stickR, colorscheme: 'Jmol' },
+          sphere: { scale: Math.max(sphereS, 0.28), colorscheme: 'Jmol' }
+        });
       } else {
-        viewer.setStyle({}, { stick: { radius: stickRadius }, sphere: { scale: sphereScale } });
+        viewer.setStyle({}, { stick: { radius: stickR }, sphere: { scale: sphereS } });
       }
 
-      if (!keepView && viewerCfg.autoZoomOnFrameChange !== false) {
+      if (pickedAtoms.length) {
+        const highlightColor = '#22d3ee';
+        let highlightStyle;
+        if (style === 'stick' || style === 'licorice') {
+          highlightStyle = { stick: { radius: stickR, color: highlightColor } };
+        } else if (style === 'sphere' || style === 'spacefill') {
+          highlightStyle = { sphere: { scale: sphereS, color: highlightColor } };
+        } else if (style === 'line') {
+          highlightStyle = { line: { linewidth: 1.2, color: highlightColor } };
+        } else {
+          highlightStyle = {
+            stick: { radius: stickR, color: highlightColor },
+            sphere: { scale: sphereS, color: highlightColor },
+          };
+        }
+        for (const atom of pickedAtoms) {
+          if (Number.isFinite(atom?.index)) {
+            viewer.setStyle({ index: atom.index }, highlightStyle);
+          } else if (Number.isFinite(atom?.serial)) {
+            viewer.setStyle({ serial: atom.serial }, highlightStyle);
+          }
+        }
+      }
+      renderPickedAtomLabels();
+    }
+
+    function renderXyz(xyz, options) {
+      const opts = Object.assign({ keepView: false, forceRebuild: false }, options || {});
+      if (opts.forceRebuild || xyz !== lastRenderedXyz) {
+        viewer.removeAllModels();
+        currentModel = viewer.addModel(xyz, 'xyz');
+        viewer.setClickable({}, true, function(atom) {
+          togglePickedAtom(atom);
+        });
+        lastRenderedXyz = xyz;
+        styleDirty = true;
+        resetPickedAtoms();
+      }
+
+      if (styleDirty) {
+        applyCurrentRenderStyle();
+        styleDirty = false;
+      }
+
+      if (!opts.keepView && viewerCfg.autoZoomOnFrameChange !== false) {
         viewer.zoomTo();
       }
       viewer.render();
@@ -851,7 +1558,6 @@ export function showLogPanel(
     function syncStyleControlsFromConfig() {
       renderStyle.value = viewerCfg.style || 'ballStick';
       bgColor.value = parseCssColorToHex(viewerCfg.backgroundColor || 'white');
-      autoZoom.checked = viewerCfg.autoZoomOnFrameChange !== false;
       stickRadius.value = String(viewerCfg.stickRadius ?? 0.18);
       sphereScale.value = String(viewerCfg.sphereScale ?? 0.25);
       stickRadiusLabel.textContent = Number(stickRadius.value).toFixed(2);
@@ -861,12 +1567,12 @@ export function showLogPanel(
     function applyStyleChangesFromControls() {
       viewerCfg.style = renderStyle.value;
       viewerCfg.backgroundColor = bgColor.value;
-      viewerCfg.autoZoomOnFrameChange = autoZoom.checked;
       viewerCfg.stickRadius = Number(stickRadius.value);
       viewerCfg.sphereScale = Number(sphereScale.value);
       viewer.setBackgroundColor(viewerCfg.backgroundColor || 'white');
       stopVibration();
-      requestRenderFrame(Number(frameSlider.value));
+      styleDirty = true;
+      renderXyz(lastRenderedXyz || (data.frameXyz[currentFrameIndex] || '0\\nempty\\n'), { keepView: true });
     }
 
     function formatValue(value, unit) {
@@ -933,8 +1639,10 @@ export function showLogPanel(
     }
 
     function renderFrame(index) {
+      currentFrameIndex = index;
+      frameSlider.value = String(index);
       const xyz = data.frameXyz[index] || '0\\nempty\\n';
-      renderXyz(xyz, false);
+      renderXyz(xyz, { keepView: false });
       frameLabel.textContent = String(index);
     }
 
@@ -961,7 +1669,6 @@ export function showLogPanel(
 
     renderStyle.addEventListener('change', applyStyleChangesFromControls);
     bgColor.addEventListener('input', applyStyleChangesFromControls);
-    autoZoom.addEventListener('change', applyStyleChangesFromControls);
     stickRadius.addEventListener('input', () => {
       stickRadiusLabel.textContent = Number(stickRadius.value).toFixed(2);
       applyStyleChangesFromControls();
@@ -971,29 +1678,65 @@ export function showLogPanel(
       applyStyleChangesFromControls();
     });
 
-    function stopVibration() {
-      if (vibTimer) {
-        clearInterval(vibTimer);
-        vibTimer = null;
-      }
+    function updateLayoutToggleUi() {
+      infoDrawer.classList.toggle('collapsed', infoCollapsed);
+      infoToggleBtn.classList.toggle('active', !infoCollapsed);
     }
 
-    function startVibration() {
-      stopVibration();
-      const modeIndex = Number(modeSelect.value);
-      const mode = data.frequencies[modeIndex];
-      if (!mode || !mode.vectors || !mode.vectors.length || !data.baseAtoms || !data.baseAtoms.length) {
-        return;
-      }
+    function closePanels() {
+      stylePanel.classList.remove('open');
+      framePanel.classList.remove('open');
+      vibrationPanel.classList.remove('open');
+    }
 
-      const amplitude = Number(ampSlider.value);
-      const baseAtoms = data.baseAtoms;
-      phase = 0;
-      const fps = Math.max(2, Number(viewerCfg.vibrationFps || 10));
-      const intervalMs = Math.round(1000 / fps);
-      vibTimer = setInterval(() => {
-        phase += 0.2;
-        const scale = Math.sin(phase) * amplitude;
+    styleBtn.addEventListener('click', () => {
+      if (stylePanel.classList.contains('open')) {
+        stylePanel.classList.remove('open');
+      } else {
+        closePanels();
+        stylePanel.classList.add('open');
+      }
+    });
+
+    frameBtn.addEventListener('click', () => {
+      if (framePanel.classList.contains('open')) {
+        framePanel.classList.remove('open');
+      } else {
+        closePanels();
+        framePanel.classList.add('open');
+      }
+    });
+
+    vibrationBtn.addEventListener('click', () => {
+      if (vibrationPanel.classList.contains('open')) {
+        vibrationPanel.classList.remove('open');
+      } else {
+        closePanels();
+        vibrationPanel.classList.add('open');
+      }
+    });
+
+    infoToggleBtn.addEventListener('click', () => {
+      infoCollapsed = !infoCollapsed;
+      updateLayoutToggleUi();
+      scheduleViewportRefresh(0);
+    });
+
+    // 移除工具栏图标按钮的事件处理，因为所有功能已在工具栏中
+
+    function stopVibration() {
+      if (vibTimer) {
+        cancelAnimationFrame(vibTimer);
+        vibTimer = null;
+      }
+      setVibrationToggleUi(false);
+    }
+
+    function buildVibrationCycle(mode, amplitude, baseAtoms, phaseCount) {
+      const cycle = [];
+      for (let i = 0; i < phaseCount; i += 1) {
+        const p = (i / phaseCount) * Math.PI * 2;
+        const scale = Math.sin(p) * amplitude;
         const moved = baseAtoms.map((atom, idx) => {
           const vec = mode.vectors[idx] || { x: 0, y: 0, z: 0 };
           return {
@@ -1003,18 +1746,124 @@ export function showLogPanel(
             z: atom.z + vec.z * scale,
           };
         });
-        renderXyz(xyzFromAtoms(moved), true);
-      }, intervalMs);
+        cycle.push(moved);
+      }
+      return cycle;
     }
 
-    vibStart.addEventListener('click', startVibration);
-    vibStop.addEventListener('click', () => {
+    function startVibration() {
       stopVibration();
-      renderFrame(Number(frameSlider.value));
+      const modeIndex = Number(modeSelect.value);
+      const mode = data.frequencies[modeIndex];
+      if (!mode || !mode.vectors || !mode.vectors.length || !data.baseAtoms || !data.baseAtoms.length) {
+        return false;
+      }
+
+      const amplitude = Number(ampSlider.value);
+      const baseAtoms = data.baseAtoms;
+      const fps = Math.max(10, Number(viewerCfg.vibrationFps || 60));
+      const intervalMs = Math.max(16, Math.round(1000 / fps));
+      const cycleKey = String(modeIndex) + '|' + amplitude.toFixed(3) + '|' + baseAtoms.length;
+      if (cycleKey !== vibrationCacheKey || !vibrationCacheCycle.length) {
+        const phaseCount = Math.max(24, Math.min(72, fps));
+        vibrationCacheCycle = buildVibrationCycle(mode, amplitude, baseAtoms, phaseCount);
+        vibrationCacheKey = cycleKey;
+      }
+      const cycle = vibrationCacheCycle;
+      let cycleIndex = 0;
+      let lastTs = 0;
+      const tick = (ts) => {
+        if (!vibTimer) {
+          return;
+        }
+        if (ts - lastTs >= intervalMs) {
+          lastTs = ts;
+          const frameAtoms = cycle[cycleIndex];
+          let updatedInPlace = false;
+          if (currentModel && typeof currentModel.selectedAtoms === 'function') {
+            const modelAtoms = currentModel.selectedAtoms({});
+            if (modelAtoms && modelAtoms.length === frameAtoms.length) {
+              for (let i = 0; i < modelAtoms.length; i += 1) {
+                modelAtoms[i].x = frameAtoms[i].x;
+                modelAtoms[i].y = frameAtoms[i].y;
+                modelAtoms[i].z = frameAtoms[i].z;
+              }
+              // 通知3Dmol重建该模型几何体，但避免remove/addModel整套开销。
+              currentModel.molObj = null;
+              viewer.render();
+              updatedInPlace = true;
+            }
+          }
+          if (!updatedInPlace) {
+            renderXyz(xyzFromAtoms(frameAtoms), { keepView: true, forceRebuild: true });
+          }
+          cycleIndex = (cycleIndex + 1) % cycle.length;
+        }
+        vibTimer = requestAnimationFrame(tick);
+      };
+      vibTimer = requestAnimationFrame(tick);
+      setVibrationToggleUi(true);
+      return true;
+    }
+
+    vibToggleBtn.addEventListener('click', () => {
+      if (vibTimer) {
+        stopVibration();
+        renderFrame(Number(frameSlider.value));
+        return;
+      }
+      startVibration();
     });
+
+    function startLoopPlayFrames() {
+      const frameCount = data.frameXyz.length;
+      if (frameCount <= 1) return;
+      const shouldLoop = Boolean(loopPlayCheckbox.checked);
+      loopPlayingFrames = true;
+      currentLoopIndex = Math.max(0, Math.min(frameCount - 1, Number(frameSlider.value) || 0));
+      if (!shouldLoop && currentLoopIndex >= frameCount - 1) {
+        // 未勾选循环且当前已在末帧时，从头开始播放，避免看起来“无反应”。
+        currentLoopIndex = 0;
+      }
+      loopPlayBtn.textContent = '播放中...';
+      loopPlayBtn.disabled = true;
+
+      const playNextFrame = () => {
+        if (!loopPlayingFrames) return;
+        renderFrame(currentLoopIndex);
+        const nextIndex = currentLoopIndex + 1;
+        if (nextIndex >= frameCount) {
+          if (shouldLoop) {
+            currentLoopIndex = 0;
+          } else {
+            stopLoopPlayFrames();
+            return;
+          }
+        } else {
+          currentLoopIndex = nextIndex;
+        }
+        setTimeout(playNextFrame, 100);
+      };
+      playNextFrame();
+    }
+
+    function stopLoopPlayFrames() {
+      loopPlayingFrames = false;
+      loopPlayBtn.textContent = '开始播放';
+      loopPlayBtn.disabled = false;
+    }
+
+    loopPlayBtn.addEventListener('click', startLoopPlayFrames);
+    loopStopBtn.addEventListener('click', stopLoopPlayFrames);
 
     renderOverview();
     renderThermo();
+
+    // 右侧面板默认隐藏，但Overview标签默认active（展开时直接看到PES）
+    tabOverview.classList.add('active');
+    tabOverviewBtn.classList.add('active');
+    tabThermo.classList.remove('active');
+    tabThermoBtn.classList.remove('active');
 
     tabOverviewBtn.addEventListener('click', () => switchTab('overview'));
     tabThermoBtn.addEventListener('click', () => switchTab('thermo'));
@@ -1093,9 +1942,11 @@ export function showLogPanel(
 
     if (!modeSelect.innerHTML) {
       modeSelect.innerHTML = '<option value="">无可用模式</option>';
-      vibStart.disabled = true;
-      vibStop.disabled = true;
+      vibToggleBtn.disabled = true;
+      setVibrationToggleUi(false);
     } else {
+      vibToggleBtn.disabled = false;
+      setVibrationToggleUi(false);
       modeSelect.addEventListener('change', () => {
         stopVibration();
       });
@@ -1122,7 +1973,7 @@ export function showLogPanel(
       return result;
     }
 
-    const sampled = samplePoints(opt, 900);
+    const sampled = samplePoints(opt, 600);
     const relativeData = sampled.map((item) => ({
       value: [item.point.index, (item.point.energy - minEnergy) * 627.509],
       absEnergy: item.point.energy,
@@ -1131,7 +1982,7 @@ export function showLogPanel(
 
     chart.setOption({
       textStyle: { color: fg },
-      title: { text: '能量变化曲线', left: 'center', top: 6, textStyle: { color: fg, fontSize: 20, fontWeight: 600 } },
+      title: { text: 'PES', left: 'center', top: 6, textStyle: { color: fg, fontSize: 20, fontWeight: 600 } },
       tooltip: {
         trigger: 'item',
         backgroundColor: tooltipBg,
@@ -1170,8 +2021,10 @@ export function showLogPanel(
         splitLine: { lineStyle: { color: border, opacity: 0.45 } },
       },
       animation: false,
+      progressive: 400,
+      hoverLayerThreshold: 3000,
       series: [
-        { name: 'Energy', type: 'line', smooth: false, showSymbol: true, symbolSize: 3, data: relativeData }
+        { name: 'Energy', type: 'line', smooth: false, showSymbol: false, sampling: 'lttb', lineStyle: { width: 1.6, color: '#39d0ba' }, data: relativeData }
       ]
     });
 
@@ -1200,6 +2053,7 @@ export function showLogPanel(
       viewer.resize();
       viewer.zoomTo();
       viewer.render();
+      chart.resize();
     }
 
     function scheduleViewportRefresh(delayMs) {
@@ -1213,6 +2067,8 @@ export function showLogPanel(
     }
 
     syncStyleControlsFromConfig();
+    updateLayoutToggleUi();
+    closePanels();
     requestRenderFrame(initialFrameIndex);
     scheduleViewportRefresh(0);
     scheduleViewportRefresh(120);

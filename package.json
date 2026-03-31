@@ -10,7 +10,7 @@
     "log visualization",
     "pbs"
   ],
-  "version": "0.3.2",
+  "version": "0.4.0",
   "publisher": "linsay",
   "license": "MIT",
   "homepage": "https://github.com/cfx2020/Gaussian-Copilot",
@@ -258,8 +258,11 @@
           "type": "string",
           "enum": [
             "ballStick",
+            "cpkBallStick",
             "stick",
+            "licorice",
             "sphere",
+            "spacefill",
             "line"
           ],
           "default": "ballStick",

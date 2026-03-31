@@ -20,7 +20,7 @@ export interface ChemAssistSettings {
   };
   viewer: {
     backgroundColor: string;
-    style: 'ballStick' | 'stick' | 'sphere' | 'line';
+    style: 'ballStick' | 'stick' | 'sphere' | 'line' | 'cpkBallStick' | 'licorice' | 'spacefill';
     stickRadius: number;
     sphereScale: number;
     vibrationFps: number;
@@ -51,7 +51,7 @@ export function getSettings(): ChemAssistSettings {
     },
     viewer: {
       backgroundColor: cfg.get<string>('viewer.backgroundColor', 'white'),
-      style: cfg.get<'ballStick' | 'stick' | 'sphere' | 'line'>('viewer.style', 'ballStick'),
+      style: cfg.get<'ballStick' | 'stick' | 'sphere' | 'line' | 'cpkBallStick' | 'licorice' | 'spacefill'>('viewer.style', 'ballStick'),
       stickRadius: cfg.get<number>('viewer.stickRadius', 0.18),
       sphereScale: cfg.get<number>('viewer.sphereScale', 0.25),
       vibrationFps: cfg.get<number>('viewer.vibrationFps', 10),
