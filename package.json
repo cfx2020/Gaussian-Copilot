@@ -36,19 +36,12 @@
     "package.json"
   ],
   "main": "./dist/extension.js",
-  "activationEvents": [
-    "onCommand:chemAssist.visualizeLog",
-    "onCommand:chemAssist.submitGjf",
-    "onCommand:chemAssist.batchSubmitGjf",
-    "onCommand:chemAssist.batchVisualizeLog",
-    "onView:chemAssist.jobView"
-  ],
   "icon": "media/icon-gaussian-copilot.png",
   "contributes": {
     "commands": [
       {
         "command": "chemAssist.visualizeLog",
-        "title": "可视化此log"
+        "title": "可视化此log/out"
       },
       {
         "command": "chemAssist.submitGjf",
@@ -60,7 +53,7 @@
       },
       {
         "command": "chemAssist.batchVisualizeLog",
-        "title": "Gaussian Copilot: 可视化选中log文件"
+        "title": "Gaussian Copilot: 可视化选中log/out文件"
       },
       {
         "command": "chemAssist.applyGjfTemplate",
@@ -103,7 +96,8 @@
       "explorer": [
         {
           "id": "chemAssist.jobView",
-          "name": "Gaussian 作业看板"
+            "name": "Gaussian 作业看板",
+            "icon": "media/icon-gaussian-copilot.png"
         }
       ]
     },
@@ -112,7 +106,7 @@
         {
           "command": "chemAssist.visualizeLog",
           "group": "navigation@10",
-          "when": "resourceExtname == .log || resourceExtname == .out"
+          "when": "resourceFilename =~ /\\.(log|out)$/i"
         },
         {
           "command": "chemAssist.submitGjf",
@@ -134,7 +128,7 @@
         },
         {
           "command": "chemAssist.batchVisualizeLog",
-          "when": "!explorerResourceIsFolder && (resourceExtname == .log || resourceExtname == .out)",
+          "when": "!explorerResourceIsFolder && resourceFilename =~ /\\.(log|out)$/i",
           "group": "navigation@21"
         }
       ],

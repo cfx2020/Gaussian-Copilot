@@ -96,6 +96,7 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 ## 📝 Notes
 
 - 推荐在 Linux / 集群环境中使用（如 CentOS + PBS）。
+- 若你在 macOS/Windows 使用 VS Code Remote SSH 连接到 Linux/PBS 服务器，扩展会在远端运行，按本地模式配置即可。
 - Linux 下提交会优先使用 `bash` 并自动加载 `~/.bashrc`，可直接使用 `gsub` 这类 alias。
 - 若提交命令是脚本路径且遇到 `Permission denied`，扩展会自动回退为 `bash <你的脚本命令>` 重试一次。
 - 当调度器状态不可用时，扩展会根据输出文件内容推断“完成/失败”。

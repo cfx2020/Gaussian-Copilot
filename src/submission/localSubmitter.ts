@@ -273,6 +273,7 @@ export class LocalSubmitter implements Submitter {
     const command = renderCommand(this.settings.runCommandTemplate, request);
     const cwd = path.dirname(request.localFilePath);
     const result = await runCommand(command, cwd, this.settings.preCommands);
+
     const output = `${result.stdout}\n${result.stderr}`.trim();
     const parsedJobId = extractJobId(output);
     const fallbackJobId = `local-${Date.now()}`;
