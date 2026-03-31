@@ -136,23 +136,35 @@ function parseQstatUserOutput(stdout: string): SchedulerJobSummary[] {
   const lines = stdout.split(/\r?\n/);
   const jobs: SchedulerJobSummary[] = [];
   const seen = new Set<string>();
-
-  let inDataSection = false;
+  let format: 'a' | 'u' | 'unknown' = 'unknown';
 
   for (const line of lines) {
-    // Skip header and separator lines
-    if (!line || /^\s*job\s+id|^\s*-+\s*$/i.test(line)) {
-      inDataSection = /^\s*-+\s*$/.test(line);
+    if (!line) {
       continue;
     }
 
-    const trimmed = line.trim();
-    if (!trimmed) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) {
       continue;
     }
 
-    // Parse job line: extract Job ID (always first field)
-    // Job ID format: digits.hostname (e.g., 1234.server)
+    // Detect table format from headers.
+    if (/^job\s+id\s+username\s+queue\s+jobname/i.test(trimmedLine)) {
+      format = 'a';
+      continue;
+    }
+    if (/^job\s+id\s+name\s+user\s+time\s+use\s+s\s+queue/i.test(trimmedLine)) {
+      format = 'u';
+      continue;
+    }
+
+    // Skip separators and generic header lines.
+    if (/^[-\s]+$/.test(trimmedLine) || /^job\s+id\b/i.test(trimmedLine)) {
+      continue;
+    }
+
+    const trimmed = trimmedLine;
+
     const jobIdMatch = trimmed.match(/^(\d+[\.\w.-]*)\s+/);
     if (!jobIdMatch) {
       continue;
@@ -167,43 +179,42 @@ function parseQstatUserOutput(stdout: string): SchedulerJobSummary[] {
       continue;
     }
 
-    // Extract state: single uppercase letter (Q/R/C/E/H)
-    // Usually appears near the end of the line
+    const parts = trimmed.split(/\s+/);
+
+    let name = id;
     let rawState = '';
-    const stateMatch = line.match(/\s([QRCEH])\s+/);
-    if (stateMatch) {
-      rawState = stateMatch[1];
+
+    if (format === 'a') {
+      // qstat -a -u: JobID Username Queue JobName ... S ...
+      if (parts.length >= 4) {
+        name = parts[3];
+      }
+      if (parts.length >= 10 && /^[QRCEH]$/.test(parts[9])) {
+        rawState = parts[9];
+      }
+    } else if (format === 'u') {
+      // qstat -u: JobID Name User TimeUse S Queue
+      if (parts.length >= 2) {
+        name = parts[1];
+      }
+      if (parts.length >= 6 && /^[QRCEH]$/.test(parts[5])) {
+        rawState = parts[5];
+      }
     }
 
-    // If state not found with spaces, try to find it at end or near end
     if (!rawState) {
-      const parts = trimmed.split(/\s+/);
-      if (parts.length > 0) {
-        // Look from right to left for state letter
-        for (let i = parts.length - 1; i >= 0; i--) {
-          if (/^[QRCEH]$/.test(parts[i])) {
-            rawState = parts[i];
-            break;
-          }
+      for (let i = parts.length - 1; i >= 0; i--) {
+        if (/^[QRCEH]$/.test(parts[i])) {
+          rawState = parts[i];
+          break;
         }
       }
     }
 
-    // Extract name: everything after Job ID until we hit extra whitespace
-    // or until we find the state field
-    // The name is the second field after Job ID
-    const idEndIndex = jobIdMatch[0].length;
-    const remainder = trimmed.substring(idEndIndex).trim();
-    const nameMatch = remainder.match(/^(\S+(?:\s+\S+)*?)(?:\s{2,}|\s+[A-Z])/);
-    
-    let name = id;
-    if (nameMatch) {
-      name = nameMatch[1];
-    } else {
-      // Fallback: take second space-separated field as name
-      const parts = remainder.split(/\s+/);
-      if (parts.length > 0 && parts[0]) {
-        name = parts[0];
+    if (!name || name === id) {
+      // Fallback for unknown formats: prefer the second token after Job ID.
+      if (parts.length >= 2 && parts[1]) {
+        name = parts[1];
       }
     }
 
@@ -216,6 +227,43 @@ function parseQstatUserOutput(stdout: string): SchedulerJobSummary[] {
   }
 
   return jobs;
+}
+
+function extractFullJobNameFromQstatFull(stdout: string): string | undefined {
+  const match = stdout.match(/\bJob_Name\s*=\s*([^\r\n]+)/i);
+  if (!match?.[1]) {
+    return undefined;
+  }
+  const value = match[1].trim();
+  return value || undefined;
+}
+
+async function enrichJobNamesWithQstatFull(
+  jobs: SchedulerJobSummary[],
+  preCommands: string[],
+): Promise<SchedulerJobSummary[]> {
+  if (!jobs.length) {
+    return jobs;
+  }
+
+  const enriched = await Promise.all(jobs.map(async (job) => {
+    try {
+      const result = await runCommand(`qstat -f ${job.id}`, undefined, preCommands);
+      const fullName = extractFullJobNameFromQstatFull(result.stdout);
+      if (!fullName) {
+        return job;
+      }
+      return {
+        ...job,
+        name: fullName,
+      };
+    } catch {
+      // Keep the parsed short name if qstat -f fails for a specific job.
+      return job;
+    }
+  }));
+
+  return enriched;
 }
 
 export class LocalSubmitter implements Submitter {
@@ -323,6 +371,7 @@ export class LocalSubmitter implements Submitter {
       }
     }
 
-    return parseQstatUserOutput(result.stdout);
+    const jobs = parseQstatUserOutput(result.stdout);
+    return enrichJobNamesWithQstatFull(jobs, this.settings.preCommands);
   }
 }
