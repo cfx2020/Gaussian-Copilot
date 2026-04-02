@@ -37,6 +37,22 @@
   ],
   "main": "./dist/extension.js",
   "icon": "media/icon-gaussian-copilot.png",
+  "activationEvents": [
+    "onCommand:chemAssist.visualizeLog",
+    "onCommand:chemAssist.submitGjf",
+    "onCommand:chemAssist.batchSubmitGjf",
+    "onCommand:chemAssist.batchVisualizeLog",
+    "onCommand:chemAssist.applyGjfTemplate",
+    "onCommand:chemAssist.refreshJobs",
+    "onCommand:chemAssist.cancelJob",
+    "onCommand:chemAssist.removeJob",
+    "onCommand:chemAssist.clearFinishedJobs",
+    "onCommand:chemAssist.openJobOutput",
+    "onCommand:chemAssist.openJobGjf",
+    "onCommand:chemAssist.downloadJobOutput",
+    "onCommand:chemAssist.resubmitJob",
+    "onView:chemAssist.jobView"
+  ],
   "contributes": {
     "commands": [
       {
