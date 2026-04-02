@@ -101,7 +101,12 @@ function routeHasGenLikeBasis(route: string): boolean {
 }
 
 function looksLikeModredundantLine(line: string): boolean {
-  return /^\s*[BADXL]\s+\d+/i.test(line.trim());
+  const trimmed = line.trim();
+  // Basis shell headers like "d 1 1.00" or "sp 3 1.00" must be preserved.
+  if (/^[A-Za-z]{1,2}\s+\d+\s+[-+]?\d*\.?\d+(?:[DdEe][-+]?\d+)?\s*$/.test(trimmed)) {
+    return false;
+  }
+  return /^\s*[BADXL]\s+\d+/i.test(trimmed);
 }
 
 function extractBasisTailFromTail(tail: string): string {
