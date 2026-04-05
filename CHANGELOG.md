@@ -30,10 +30,10 @@
 
 ### Changed
 - 提交流程增强为 Linux 下优先通过 `bash` 执行，并自动加载 `~/.bashrc`，支持直接使用 `gsub` 等 alias。
-- `chemAssist.submit.preCommands` 由“保留项”改为实际参与执行，且与提交命令在同一 shell 顺序运行。
+- `gaussianCopilot.submit.preCommands` 由“保留项”改为实际参与执行，且与提交命令在同一 shell 顺序运行。
 - 提交相关默认值调整：
-  - `chemAssist.submit.runCommandTemplate` 默认 `gsub {file}`
-  - `chemAssist.submit.preCommands` 默认 `source ~/.bashrc`
+  - `gaussianCopilot.submit.runCommandTemplate` 默认 `gsub {file}`
+  - `gaussianCopilot.submit.preCommands` 默认 `source ~/.bashrc`
 - `Next` 面板中 `Dichloro-methane` / `Dichloro-ethane` 统一改为无连字符写入（`dichloromethane` / `dichloroethane`）。
 - 作业看板显示优化：任务标题不再显示 `.gjf` 后缀。
 - 结构控制优化：帧滑块初始默认定位到最后一帧。
@@ -79,7 +79,7 @@
 
 ### Added
 - 新增“自动发现已有作业”能力：作业看板会根据 `qstat -u <username>` 自动识别当前用户已在队列中的作业（含安装插件前提交的作业）。
-- 新增设置项 `chemAssist.jobs.username`：支持显式指定调度器用户名；留空时自动从 `USER/LOGNAME/USERNAME` 推断。
+- 新增设置项 `gaussianCopilot.jobs.username`：支持显式指定调度器用户名；留空时自动从 `USER/LOGNAME/USERNAME` 推断。
 - 作业看板新增多选能力（支持批量操作）。
 - 新增作业右键命令：`打开选中gjf`、`重新提交选中gjf`。
 

@@ -4,16 +4,16 @@
 
 ```json
 {
-  "chemAssist.submit.runCommandTemplate": "gsub {file}",
-  "chemAssist.submit.preCommands": [
+  "gaussianCopilot.submit.runCommandTemplate": "gsub {file}",
+  "gaussianCopilot.submit.preCommands": [
     "source /etc/profile",
     "module load gaussian/g16"
   ],
-  "chemAssist.pbs.queue": "normal",
-  "chemAssist.pbs.nodes": 1,
-  "chemAssist.pbs.ppn": 16,
-  "chemAssist.pbs.walltime": "72:00:00",
-  "chemAssist.pbs.mem": "32gb"
+  "gaussianCopilot.pbs.queue": "normal",
+  "gaussianCopilot.pbs.nodes": 1,
+  "gaussianCopilot.pbs.ppn": 16,
+  "gaussianCopilot.pbs.walltime": "72:00:00",
+  "gaussianCopilot.pbs.mem": "32gb"
 }
 ```
 

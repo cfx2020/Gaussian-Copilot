@@ -49,7 +49,7 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 
 ```json
 {
-  "chemAssist.submit.runCommandTemplate": "gsub {file}"
+  "gaussianCopilot.submit.runCommandTemplate": "gsub {file}"
 }
 ```
 
@@ -68,27 +68,27 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 ## ⚙️ Configuration
 
 ### Submit
-- `chemAssist.submit.runCommandTemplate`：提交命令模板（占位符：`{file}`、`{basename}`、`{dir}`）
-- `chemAssist.submit.preCommands`：提交前预执行命令（与提交命令在同一 shell 中顺序执行）
+- `gaussianCopilot.submit.runCommandTemplate`：提交命令模板（占位符：`{file}`、`{basename}`、`{dir}`）
+- `gaussianCopilot.submit.preCommands`：提交前预执行命令（与提交命令在同一 shell 中顺序执行）
 
 ### Job View
-- `chemAssist.jobs.autoRefreshSeconds`：作业状态自动刷新间隔（秒，`0` 表示关闭）
-- `chemAssist.jobs.username`：用于 `qstat -u` 的用户名；留空时自动从 `USER/LOGNAME/USERNAME` 推断
+- `gaussianCopilot.jobs.autoRefreshSeconds`：作业状态自动刷新间隔（秒，`0` 表示关闭）
+- `gaussianCopilot.jobs.username`：用于 `qstat -u` 的用户名；留空时自动从 `USER/LOGNAME/USERNAME` 推断
 
 ### Parser
-- `chemAssist.parser.maxFrames`：解析时保留的最大结构帧数
+- `gaussianCopilot.parser.maxFrames`：解析时保留的最大结构帧数
 
 ### Viewer
-- `chemAssist.viewer.backgroundColor`
-- `chemAssist.viewer.style`
-- `chemAssist.viewer.stickRadius`
-- `chemAssist.viewer.sphereScale`
-- `chemAssist.viewer.vibrationFps`
-- `chemAssist.viewer.maxDisplayedFrequencies`
-- `chemAssist.viewer.autoZoomOnFrameChange`
+- `gaussianCopilot.viewer.backgroundColor`
+- `gaussianCopilot.viewer.style`
+- `gaussianCopilot.viewer.stickRadius`
+- `gaussianCopilot.viewer.sphereScale`
+- `gaussianCopilot.viewer.vibrationFps`
+- `gaussianCopilot.viewer.maxDisplayedFrequencies`
+- `gaussianCopilot.viewer.autoZoomOnFrameChange`
 
 ### Templates
-- `chemAssist.templates.custom`：自定义 `.gjf` 模板
+- `gaussianCopilot.templates.custom`：自定义 `.gjf` 模板
 
 ## 🔄 Typical Workflow
 
@@ -114,4 +114,3 @@ npm run compile
 ```
 
 按 `F5` 启动扩展开发主机。
-

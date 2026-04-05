@@ -18,5 +18,5 @@
 - 修复同名作业在不同目录下点击打开错误文件的问题（增加 `qstat -f` 目录线索定位 + 人工选择记忆）。
 
 ### 兼容说明
-- 新增配置：`chemAssist.jobs.username`（可选）。
+- 新增配置：`gaussianCopilot.jobs.username`（可选）。
 - 若留空，插件会自动从 `USER/LOGNAME/USERNAME` 推断用户名。

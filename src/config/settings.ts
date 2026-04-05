@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { BuiltinTemplate, GjfTemplate } from '../templates/types';
 
-export interface ChemAssistSettings {
+export interface GaussianCopilotSettings {
   runCommandTemplate: string;
   preCommands: string[];
   pbs: {
@@ -30,35 +30,70 @@ export interface ChemAssistSettings {
   customTemplates: GjfTemplate[];
 }
 
-export function getSettings(): ChemAssistSettings {
-  const cfg = vscode.workspace.getConfiguration('chemAssist');
+function getExplicitConfigValue<T>(section: vscode.WorkspaceConfiguration, key: string): T | undefined {
+  const inspected = section.inspect<T>(key);
+  return inspected?.workspaceFolderValue ?? inspected?.workspaceValue ?? inspected?.globalValue;
+}
+
+function getConfigValue<T>(
+  section: vscode.WorkspaceConfiguration,
+  legacySection: vscode.WorkspaceConfiguration,
+  key: string,
+  defaultValue: T,
+): T {
+  const value = getExplicitConfigValue<T>(section, key);
+  if (value !== undefined) {
+    return value;
+  }
+
+  const legacyValue = getExplicitConfigValue<T>(legacySection, key);
+  if (legacyValue !== undefined) {
+    return legacyValue;
+  }
+
+  return section.get<T>(key, defaultValue);
+}
+
+export function getSettings(): GaussianCopilotSettings {
+  const cfg = vscode.workspace.getConfiguration('gaussianCopilot');
+  const legacyCfg = vscode.workspace.getConfiguration('chemAssist');
   return {
-    runCommandTemplate: cfg.get<string>('submit.runCommandTemplate', cfg.get<string>('submit.localCommandTemplate', 'gsub {file}')),
-    preCommands: cfg.get<string[]>('submit.preCommands', ['source ~/.bashrc']),
+    runCommandTemplate: getConfigValue(
+      cfg,
+      legacyCfg,
+      'submit.runCommandTemplate',
+      legacyCfg.get<string>('submit.localCommandTemplate', 'gsub {file}'),
+    ),
+    preCommands: getConfigValue(cfg, legacyCfg, 'submit.preCommands', ['source ~/.bashrc']),
     pbs: {
-      queue: cfg.get<string>('pbs.queue', ''),
-      nodes: cfg.get<number>('pbs.nodes', 1),
-      ppn: cfg.get<number>('pbs.ppn', 8),
-      walltime: cfg.get<string>('pbs.walltime', '48:00:00'),
-      mem: cfg.get<string>('pbs.mem', '16gb'),
+      queue: getConfigValue(cfg, legacyCfg, 'pbs.queue', ''),
+      nodes: getConfigValue(cfg, legacyCfg, 'pbs.nodes', 1),
+      ppn: getConfigValue(cfg, legacyCfg, 'pbs.ppn', 8),
+      walltime: getConfigValue(cfg, legacyCfg, 'pbs.walltime', '48:00:00'),
+      mem: getConfigValue(cfg, legacyCfg, 'pbs.mem', '16gb'),
     },
     parser: {
-      maxFrames: cfg.get<number>('parser.maxFrames', 500),
+      maxFrames: getConfigValue(cfg, legacyCfg, 'parser.maxFrames', 500),
     },
     jobs: {
-      autoRefreshSeconds: cfg.get<number>('jobs.autoRefreshSeconds', 60),
-      username: cfg.get<string>('jobs.username', ''),
+      autoRefreshSeconds: getConfigValue(cfg, legacyCfg, 'jobs.autoRefreshSeconds', 60),
+      username: getConfigValue(cfg, legacyCfg, 'jobs.username', ''),
     },
     viewer: {
-      backgroundColor: cfg.get<string>('viewer.backgroundColor', 'white'),
-      style: cfg.get<'ballStick' | 'stick' | 'sphere' | 'line' | 'cpkBallStick' | 'licorice' | 'spacefill'>('viewer.style', 'ballStick'),
-      stickRadius: cfg.get<number>('viewer.stickRadius', 0.18),
-      sphereScale: cfg.get<number>('viewer.sphereScale', 0.25),
-      vibrationFps: cfg.get<number>('viewer.vibrationFps', 10),
-      maxDisplayedFrequencies: cfg.get<number>('viewer.maxDisplayedFrequencies', 180),
-      autoZoomOnFrameChange: cfg.get<boolean>('viewer.autoZoomOnFrameChange', true),
+      backgroundColor: getConfigValue(cfg, legacyCfg, 'viewer.backgroundColor', 'white'),
+      style: getConfigValue<'ballStick' | 'stick' | 'sphere' | 'line' | 'cpkBallStick' | 'licorice' | 'spacefill'>(
+        cfg,
+        legacyCfg,
+        'viewer.style',
+        'ballStick',
+      ),
+      stickRadius: getConfigValue(cfg, legacyCfg, 'viewer.stickRadius', 0.18),
+      sphereScale: getConfigValue(cfg, legacyCfg, 'viewer.sphereScale', 0.25),
+      vibrationFps: getConfigValue(cfg, legacyCfg, 'viewer.vibrationFps', 10),
+      maxDisplayedFrequencies: getConfigValue(cfg, legacyCfg, 'viewer.maxDisplayedFrequencies', 180),
+      autoZoomOnFrameChange: getConfigValue(cfg, legacyCfg, 'viewer.autoZoomOnFrameChange', true),
     },
-    customTemplates: cfg.get<GjfTemplate[]>('templates.custom', []),
+    customTemplates: getConfigValue(cfg, legacyCfg, 'templates.custom', [] as GjfTemplate[]),
   };
 }
 

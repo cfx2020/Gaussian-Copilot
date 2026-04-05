@@ -1,7 +1,7 @@
 import { exec } from 'child_process';
 import { existsSync } from 'fs';
 import * as path from 'path';
-import { ChemAssistSettings } from '../config/settings';
+import { GaussianCopilotSettings } from '../config/settings';
 import { JobStatusResult, SchedulerJobSummary, SubmitRequest, SubmitResult, Submitter } from './types';
 
 function renderCommand(template: string, req: SubmitRequest): string {
@@ -267,7 +267,7 @@ async function enrichJobNamesWithQstatFull(
 }
 
 export class LocalSubmitter implements Submitter {
-  constructor(private readonly settings: ChemAssistSettings) {}
+  constructor(private readonly settings: GaussianCopilotSettings) {}
 
   async submit(request: SubmitRequest): Promise<SubmitResult> {
     const command = renderCommand(this.settings.runCommandTemplate, request);

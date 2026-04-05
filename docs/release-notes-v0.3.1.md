@@ -8,10 +8,10 @@
 - `Dichloro-methane` / `Dichloro-ethane` 统一写入为 `dichloromethane` / `dichloroethane`。
 
 ### 关键改进
-- `chemAssist.submit.preCommands` 现在会真正参与执行，并与提交命令在同一 shell 顺序运行。
+- `gaussianCopilot.submit.preCommands` 现在会真正参与执行，并与提交命令在同一 shell 顺序运行。
 - 默认提交配置更新：
-  - `chemAssist.submit.runCommandTemplate` 默认值改为 `gsub {file}`
-  - `chemAssist.submit.preCommands` 默认值改为 `source ~/.bashrc`
+  - `gaussianCopilot.submit.runCommandTemplate` 默认值改为 `gsub {file}`
+  - `gaussianCopilot.submit.preCommands` 默认值改为 `source ~/.bashrc`
 - 作业看板任务显示名不再带 `.gjf` 后缀（仅显示层变更，不影响内部匹配逻辑）。
 - 可视化“结构控制”帧滑块默认显示最后一帧。
 

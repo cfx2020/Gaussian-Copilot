@@ -196,12 +196,12 @@
     "configuration": {
       "title": "Gaussian Copilot",
       "properties": {
-        "chemAssist.submit.runCommandTemplate": {
+        "gaussianCopilot.submit.runCommandTemplate": {
           "type": "string",
           "default": "gsub {file}",
           "description": "Run submit command template. Supported placeholders: {file}, {basename}, {dir}."
         },
-        "chemAssist.submit.preCommands": {
+        "gaussianCopilot.submit.preCommands": {
           "type": "array",
           "default": [
             "source ~/.bashrc"
@@ -211,37 +211,37 @@
           },
           "description": "Commands to run before submit command (e.g. module load gaussian)."
         },
-        "chemAssist.pbs.queue": {
+        "gaussianCopilot.pbs.queue": {
           "type": "string",
           "default": "",
           "description": "PBS queue name."
         },
-        "chemAssist.pbs.nodes": {
+        "gaussianCopilot.pbs.nodes": {
           "type": "number",
           "default": 1,
           "description": "PBS nodes value."
         },
-        "chemAssist.pbs.ppn": {
+        "gaussianCopilot.pbs.ppn": {
           "type": "number",
           "default": 8,
           "description": "PBS ppn value."
         },
-        "chemAssist.pbs.walltime": {
+        "gaussianCopilot.pbs.walltime": {
           "type": "string",
           "default": "48:00:00",
           "description": "PBS walltime (HH:MM:SS)."
         },
-        "chemAssist.pbs.mem": {
+        "gaussianCopilot.pbs.mem": {
           "type": "string",
           "default": "16gb",
           "description": "PBS memory setting, e.g. 16gb."
         },
-        "chemAssist.parser.maxFrames": {
+        "gaussianCopilot.parser.maxFrames": {
           "type": "number",
           "default": 500,
           "description": "Maximum number of coordinate frames kept in memory."
         },
-        "chemAssist.templates.custom": {
+        "gaussianCopilot.templates.custom": {
           "type": "array",
           "default": [],
           "description": "Custom .gjf templates.",
@@ -249,22 +249,22 @@
             "type": "object"
           }
         },
-        "chemAssist.jobs.autoRefreshSeconds": {
+        "gaussianCopilot.jobs.autoRefreshSeconds": {
           "type": "number",
           "default": 60,
           "description": "Auto refresh interval for job status in seconds. Set 0 to disable."
         },
-        "chemAssist.jobs.username": {
+        "gaussianCopilot.jobs.username": {
           "type": "string",
           "default": "",
           "description": "Scheduler username used by qstat -u <username>. Leave empty to auto-detect from USER/LOGNAME/USERNAME."
         },
-        "chemAssist.viewer.backgroundColor": {
+        "gaussianCopilot.viewer.backgroundColor": {
           "type": "string",
           "default": "white",
           "description": "3D viewer background color (CSS color), e.g. white, black, #f8fafc."
         },
-        "chemAssist.viewer.style": {
+        "gaussianCopilot.viewer.style": {
           "type": "string",
           "enum": [
             "ballStick",
@@ -278,27 +278,27 @@
           "default": "ballStick",
           "description": "Default 3D rendering style."
         },
-        "chemAssist.viewer.stickRadius": {
+        "gaussianCopilot.viewer.stickRadius": {
           "type": "number",
           "default": 0.18,
           "description": "Stick radius for 3D model rendering."
         },
-        "chemAssist.viewer.sphereScale": {
+        "gaussianCopilot.viewer.sphereScale": {
           "type": "number",
           "default": 0.25,
           "description": "Sphere scale for 3D model rendering."
         },
-        "chemAssist.viewer.vibrationFps": {
+        "gaussianCopilot.viewer.vibrationFps": {
           "type": "number",
           "default": 10,
           "description": "Vibration animation FPS."
         },
-        "chemAssist.viewer.maxDisplayedFrequencies": {
+        "gaussianCopilot.viewer.maxDisplayedFrequencies": {
           "type": "number",
           "default": 180,
           "description": "Maximum number of frequencies shown in list/select."
         },
-        "chemAssist.viewer.autoZoomOnFrameChange": {
+        "gaussianCopilot.viewer.autoZoomOnFrameChange": {
           "type": "boolean",
           "default": true,
           "description": "Auto zoom model when switching structure frames."
