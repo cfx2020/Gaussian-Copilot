@@ -524,11 +524,15 @@ export function showLogPanel(
       --gc-border: color-mix(in srgb, var(--vscode-panel-border) 76%, #89f0dd);
       --gc-text-soft: color-mix(in srgb, var(--vscode-descriptionForeground) 90%, #b8fff2);
       --gc-shadow: 0 16px 30px rgba(0, 0, 0, 0.22);
+      --gc-page-pad: 14px;
+      --gc-stage-pad: 12px;
+      --gc-gap: 10px;
+      --gc-toolbar-height: 56px;
     }
     * { box-sizing: border-box; }
     body {
       font-family: 'Avenir Next', 'SF Pro Display', 'Segoe UI', sans-serif;
-      padding: 14px;
+      padding: var(--gc-page-pad);
       margin: 0;
       color: var(--vscode-editor-foreground);
       background:
@@ -536,18 +540,21 @@ export function showLogPanel(
         radial-gradient(1000px 520px at 110% 115%, rgba(56, 136, 212, 0.20), transparent 60%),
         var(--vscode-editor-background);
       min-height: 100vh;
+      overflow: hidden;
     }
     .stage {
       display: grid;
       grid-template-rows: auto 1fr;
-      gap: 10px;
-      height: calc(100vh - 28px);
+      gap: var(--gc-gap);
+      height: calc(100vh - (var(--gc-page-pad) * 2));
       min-height: 680px;
+      position: relative;
+      overflow: hidden;
     }
     .card {
       border: 1px solid var(--gc-border);
       border-radius: 14px;
-      padding: 12px;
+      padding: var(--gc-stage-pad);
       background: linear-gradient(170deg, color-mix(in srgb, var(--gc-surface) 94%, #205568), color-mix(in srgb, var(--gc-surface) 88%, #111922));
       box-shadow: var(--gc-shadow);
       backdrop-filter: blur(8px);
@@ -563,6 +570,8 @@ export function showLogPanel(
       min-height: 48px;
       flex-wrap: wrap;
       justify-content: flex-start;
+      position: relative;
+      z-index: 12;
     }
     .toolbar-spacer {
       flex: 1;
@@ -625,10 +634,11 @@ export function showLogPanel(
     }
     .floating-panel {
       position: absolute;
-      top: 70px;
-      left: 10px;
-      width: min(320px, calc(100% - 20px));
-      max-height: calc(100% - 80px);
+      top: calc(var(--gc-toolbar-height) + var(--gc-gap));
+      left: var(--gc-stage-pad);
+      width: min(340px, calc(100% - (var(--gc-stage-pad) * 2)));
+      max-width: calc(100% - (var(--gc-stage-pad) * 2));
+      max-height: calc(100% - var(--gc-toolbar-height) - (var(--gc-stage-pad) * 2) - var(--gc-gap));
       overflow-y: auto;
       padding: 12px;
       border-radius: 12px;
@@ -725,6 +735,10 @@ export function showLogPanel(
       color: var(--gc-text-soft);
       min-width: 36px;
       text-align: center;
+      white-space: nowrap;
+    }
+    #frameLabel {
+      min-width: 72px;
     }
     .panel-field input[type='checkbox'] {
       width: 16px;
@@ -756,6 +770,9 @@ export function showLogPanel(
     .viewer-stage {
       position: relative;
       min-height: 0;
+      height: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
       border: 1px solid color-mix(in srgb, var(--gc-border) 84%, transparent);
       border-radius: 12px;
       overflow: hidden;
@@ -771,10 +788,13 @@ export function showLogPanel(
       letter-spacing: 0.02em;
       text-transform: none;
     }
+    #measurementInfo {
+      max-width: min(520px, calc(100% - 24px));
+    }
     .viewer-wrap {
       width: 100%;
       height: 100%;
-      min-height: 390px;
+      min-height: clamp(320px, 52vh, 920px);
       overflow: hidden;
       box-sizing: border-box;
       padding: 0;
@@ -785,10 +805,11 @@ export function showLogPanel(
     #viewer canvas { width: 100% !important; height: 100% !important; display: block; }
     .info-drawer {
       position: absolute;
-      top: 10px;
-      right: 10px;
-      width: min(360px, calc(100% - 24px));
-      max-height: calc(100% - 20px);
+      top: var(--gc-stage-pad);
+      right: var(--gc-stage-pad);
+      bottom: var(--gc-stage-pad);
+      width: min(360px, calc(100% - (var(--gc-stage-pad) * 2)));
+      max-height: none;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -815,14 +836,49 @@ export function showLogPanel(
       flex: 1;
       overflow-y: auto;
       padding: 8px;
+      min-height: 0;
+      scrollbar-gutter: stable;
     }
     .info-drawer-curve {
-      margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px solid color-mix(in srgb, var(--gc-border) 52%, transparent);
+      margin-top: 6px;
+      padding-top: 10px;
+      border-top: none;
+    }
+    .curve-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .curve-type-tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .curve-type-btn {
+      border: 1px solid color-mix(in srgb, var(--gc-border) 78%, transparent);
+      background: transparent;
+      color: var(--gc-text-soft);
+      border-radius: 999px;
+      padding: 3px 10px;
+      cursor: pointer;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .curve-type-btn.active {
+      color: #defef6;
+      border-color: var(--gc-accent);
+      background: linear-gradient(160deg, rgba(30, 108, 98, 0.62), rgba(20, 72, 98, 0.58));
+    }
+    .curve-summary {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--gc-text-soft);
+      white-space: nowrap;
     }
     .info-drawer.collapsed {
-      transform: translateX(calc(100% + 18px));
+      transform: translateX(calc(100% + var(--gc-stage-pad) + 6px));
       opacity: 0;
       pointer-events: none;
     }
@@ -908,6 +964,7 @@ export function showLogPanel(
       margin-top: 8px;
     }
     .action-row button {
+      flex: 1 1 220px;
       border: 1px solid color-mix(in srgb, var(--gc-border) 82%, transparent);
       background: linear-gradient(160deg, rgba(35, 96, 93, 0.56), rgba(26, 64, 91, 0.54));
       color: color-mix(in srgb, var(--vscode-button-foreground, #ffffff) 95%, #d6fff8);
@@ -924,7 +981,7 @@ export function showLogPanel(
     .section-title { font-weight: 600; margin-top: 8px; margin-bottom: 4px; }
     .hint { opacity: 0.8; font-size: 12px; color: var(--gc-text-soft); }
     .tabs { display: flex; gap: 8px; margin-bottom: 8px; }
-    .tab-btn { border: 1px solid color-mix(in srgb, var(--gc-border) 82%, transparent); background: transparent; color: inherit; border-radius: 8px; padding: 5px 11px; cursor: pointer; }
+    .tab-btn { border: 1px solid color-mix(in srgb, var(--gc-border) 82%, transparent); background: transparent; color: inherit; border-radius: 8px; padding: 5px 11px; cursor: pointer; flex: 1 1 90px; min-width: 0; }
     .tab-btn.active { background: linear-gradient(160deg, rgba(30, 108, 98, 0.62), rgba(20, 72, 98, 0.58)); color: #dffff6; }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
@@ -932,7 +989,7 @@ export function showLogPanel(
     .kv-table td { border-bottom: 1px solid color-mix(in srgb, var(--gc-border) 72%, transparent); padding: 5px 6px; vertical-align: top; }
     .kv-table td:first-child { width: 52%; opacity: 0.95; }
     .solvent-select {
-      flex: 1;
+      flex: 2 1 220px;
       min-width: 220px;
       border: 1px solid color-mix(in srgb, var(--gc-border) 82%, transparent);
       border-radius: 6px;
@@ -941,6 +998,9 @@ export function showLogPanel(
       color: var(--vscode-dropdown-foreground);
     }
     @media (max-width: 1200px) {
+      :root {
+        --gc-stage-pad: 10px;
+      }
       .toolbar {
         gap: 6px;
         padding: 6px;
@@ -953,8 +1013,15 @@ export function showLogPanel(
       .toolbar-btn-icon {
         font-size: 16px;
       }
+      .info-drawer {
+        width: min(320px, calc(100% - (var(--gc-stage-pad) * 2)));
+      }
     }
     @media (max-width: 900px) {
+      :root {
+        --gc-page-pad: 12px;
+        --gc-gap: 8px;
+      }
       .toolbar {
         gap: 5px;
         padding: 5px;
@@ -974,36 +1041,133 @@ export function showLogPanel(
       .toolbar-sep {
         height: 28px;
       }
+      .viewer-wrap {
+        min-height: clamp(300px, 48vh, 720px);
+      }
+      .info-drawer {
+        width: min(300px, calc(100% - (var(--gc-stage-pad) * 2)));
+      }
+      #measurementInfo {
+        max-width: calc(100% - 24px);
+      }
     }
     @media (max-width: 760px) {
+      :root {
+        --gc-page-pad: 9px;
+        --gc-stage-pad: 8px;
+        --gc-gap: 8px;
+      }
       .viewer-head {
-        display: none;
+        gap: 4px;
+        font-size: 10px;
       }
       .stage {
         grid-template-rows: auto minmax(300px, 1fr);
-        height: calc(100vh - 18px);
+        height: calc(100vh - (var(--gc-page-pad) * 2));
         min-height: 540px;
       }
       .toolbar {
-        height: 34px;
         gap: 4px;
         padding: 4px 5px;
       }
       .toolbar-brand {
         font-size: 12px;
-        padding: 3px 6px;
+        order: -1;
+        width: 100%;
+        margin-left: 0;
+        margin-right: 0;
+        padding: 0 0 2px;
       }
-      .toolbar-icon-btn {
-        width: 24px;
-        height: 24px;
-        font-size: 10px;
+      .toolbar-spacer {
+        display: none;
       }
-      .toolbar-divider {
-        height: 16px;
-        margin: 0 2px;
+      .toolbar-btn {
+        flex: 1 1 68px;
+      }
+      .floating-panel {
+        left: var(--gc-stage-pad);
+        right: var(--gc-stage-pad);
+        width: auto;
+        max-height: calc(100% - var(--gc-toolbar-height) - (var(--gc-stage-pad) * 2) - 6px);
+      }
+      .viewer-wrap {
+        min-height: clamp(280px, 44vh, 520px);
+      }
+      .info-drawer {
+        left: var(--gc-stage-pad);
+        right: var(--gc-stage-pad);
+        top: auto;
+        bottom: var(--gc-stage-pad);
+        width: auto;
+        height: min(44%, 340px);
+      }
+      .info-drawer.collapsed {
+        transform: translateY(calc(100% + var(--gc-stage-pad) + 6px));
+      }
+      .tabs {
+        flex-wrap: wrap;
+      }
+      .curve-summary {
+        margin-left: 0;
+        white-space: normal;
+      }
+      .action-row {
+        flex-direction: column;
+      }
+      .action-row button,
+      .solvent-select {
+        width: 100%;
+        min-width: 0;
+      }
+      .field {
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .field label {
+        width: 100%;
+      }
+      .field select,
+      .field input[type="range"] {
+        width: 100%;
+        min-width: 0;
+      }
+      #measurementInfo {
+        left: var(--gc-stage-pad) !important;
+        right: var(--gc-stage-pad);
+        bottom: var(--gc-stage-pad) !important;
+        max-width: none;
       }
       #curve {
         height: 160px;
+      }
+    }
+    @media (max-width: 520px) {
+      .toolbar-btn-label {
+        font-size: 8px;
+      }
+      .toolbar-btn {
+        min-width: 0;
+        padding: 4px 6px;
+      }
+      .panel-field label,
+      .field label,
+      .kv-table,
+      .hint {
+        font-size: 11px;
+      }
+      .info-drawer {
+        height: min(48%, 320px);
+      }
+    }
+    @media (max-height: 720px) {
+      .stage {
+        min-height: 0;
+      }
+      .viewer-wrap {
+        min-height: 260px;
+      }
+      .info-drawer {
+        height: min(52%, 300px);
       }
     }
   </style>
@@ -1144,6 +1308,10 @@ export function showLogPanel(
             <div id="tabOverview" class="tab-panel active">
               <table class="kv-table" id="overviewTable"></table>
               <div class="info-drawer-curve">
+                <div class="curve-toolbar">
+                  <div id="curveTypeTabs" class="curve-type-tabs"></div>
+                  <div id="curveSummary" class="curve-summary"></div>
+                </div>
                 <div id="curve" style="height: 180px;"></div>
               </div>
             </div>
@@ -1211,6 +1379,9 @@ export function showLogPanel(
     });
     const frameSlider = document.getElementById('frame');
     const viewerElement = document.getElementById('viewer');
+    const viewerStage = document.querySelector('.viewer-stage');
+    const stageElement = document.querySelector('.stage');
+    const toolbarElement = document.querySelector('.toolbar');
     const frameLabel = document.getElementById('frameLabel');
     const modeSelect = document.getElementById('mode');
     const ampSlider = document.getElementById('amp');
@@ -1235,6 +1406,8 @@ export function showLogPanel(
     const tabNext = document.getElementById('tabNext');
     const overviewTable = document.getElementById('overviewTable');
     const thermoTable = document.getElementById('thermoTable');
+    const curveTypeTabs = document.getElementById('curveTypeTabs');
+    const curveSummary = document.getElementById('curveSummary');
     const nextTsBtn = document.getElementById('nextTsBtn');
     const nextTsReadBtn = document.getElementById('nextTsReadBtn');
     const nextSolBtn = document.getElementById('nextSolBtn');
@@ -1247,14 +1420,55 @@ export function showLogPanel(
     const stickRadiusLabel = document.getElementById('stickRadiusLabel');
     const sphereScaleLabel = document.getElementById('sphereScaleLabel');
     const measurementInfo = document.getElementById('measurementInfo');
-    const initialFrameIndex = Math.max(data.frameXyz.length - 1, 0);
-    frameSlider.max = String(initialFrameIndex);
+    const normalizedCalculationType = String(data.overview?.calculationType || '').toUpperCase();
+    const ircFrameOrder = normalizedCalculationType === 'IRC'
+      ? data.curves
+        .filter((point) => point.type === 'irc' && Number.isFinite(point.frameIndex))
+        .slice()
+        .sort((left, right) => {
+          const leftCoord = Number.isFinite(left.coordinate) ? Number(left.coordinate) : Number(left.index || 0);
+          const rightCoord = Number.isFinite(right.coordinate) ? Number(right.coordinate) : Number(right.index || 0);
+          return leftCoord - rightCoord;
+        })
+        .map((point) => Number(point.frameIndex))
+        .filter((frameIndex, index, list) => list.indexOf(frameIndex) === index)
+      : [];
+    const scanFrameOrder = normalizedCalculationType === 'SCAN'
+      ? data.curves
+        .filter((point) => point.type === 'scan' && Number.isFinite(point.frameIndex))
+        .slice()
+        .sort((left, right) => {
+          const leftPoint = Number.isFinite(left.pointNumber) ? Number(left.pointNumber) : Number(left.index || 0);
+          const rightPoint = Number.isFinite(right.pointNumber) ? Number(right.pointNumber) : Number(right.index || 0);
+          return leftPoint - rightPoint;
+        })
+        .map((point) => Number(point.frameIndex))
+        .filter((frameIndex, index, list) => list.indexOf(frameIndex) === index)
+      : [];
+    const frameOrder = ircFrameOrder.length
+      ? ircFrameOrder
+      : scanFrameOrder.length
+        ? scanFrameOrder
+      : data.frameXyz.map((_, index) => index);
+    const actualToDisplayFrameIndex = new Map(frameOrder.map((actualIndex, displayIndex) => [actualIndex, displayIndex]));
+    const initialFrameIndex = normalizedCalculationType === 'IRC' && frameOrder.length
+      ? Math.floor(frameOrder.length / 2)
+      : normalizedCalculationType === 'SCAN'
+        ? 0
+        : Math.max(frameOrder.length - 1, 0);
+    function formatFrameLabel(displayIndex) {
+      const total = Math.max(frameOrder.length, 1);
+      return String(displayIndex + 1) + ' of ' + total;
+    }
+
+    frameSlider.max = String(Math.max(frameOrder.length - 1, 0));
     frameSlider.value = String(initialFrameIndex);
-    frameLabel.textContent = String(initialFrameIndex);
+    frameLabel.textContent = formatFrameLabel(initialFrameIndex);
     let vibTimer = null;
     let frameRenderScheduled = false;
     let pendingFrameIndex = 0;
-    let currentFrameIndex = initialFrameIndex;
+    let currentFrameIndex = frameOrder[initialFrameIndex] ?? initialFrameIndex;
+    let currentDisplayFrameIndex = initialFrameIndex;
     let customSolvent = '';
     let resizeTimer = null;
     let lastRenderedXyz = '';
@@ -1271,6 +1485,23 @@ export function showLogPanel(
     let suppressClearOnNextClick = false;
     let vibrationCacheKey = '';
     let vibrationCacheCycle = [];
+    let resizeObserver = null;
+
+    function syncStageMetrics() {
+      if (!stageElement || !toolbarElement) {
+        return;
+      }
+      const toolbarHeight = Math.ceil(toolbarElement.getBoundingClientRect().height || 0);
+      stageElement.style.setProperty('--gc-toolbar-height', toolbarHeight + 'px');
+    }
+
+    function getActualFrameIndex(displayIndex) {
+      return frameOrder[displayIndex] ?? displayIndex;
+    }
+
+    function getDisplayFrameIndex(actualIndex) {
+      return actualToDisplayFrameIndex.get(actualIndex) ?? actualIndex;
+    }
 
     function atomKey(atom) {
       if (atom && Number.isFinite(atom.index)) {
@@ -1641,14 +1872,17 @@ export function showLogPanel(
       tabOverview.classList.toggle('active', overviewActive);
       tabThermo.classList.toggle('active', thermoActive);
       tabNext.classList.toggle('active', nextActive);
+      scheduleViewportRefresh(0);
     }
 
     function renderFrame(index) {
-      currentFrameIndex = index;
+      currentDisplayFrameIndex = index;
+      currentFrameIndex = getActualFrameIndex(index);
       frameSlider.value = String(index);
-      const xyz = data.frameXyz[index] || '0\\nempty\\n';
+      const xyz = data.frameXyz[currentFrameIndex] || '0\\nempty\\n';
       renderXyz(xyz, { keepView: false });
-      frameLabel.textContent = String(index);
+      frameLabel.textContent = formatFrameLabel(index);
+      updateCurveSelection();
     }
 
     function requestRenderFrame(index) {
@@ -1814,14 +2048,14 @@ export function showLogPanel(
     vibToggleBtn.addEventListener('click', () => {
       if (vibTimer) {
         stopVibration();
-        renderFrame(Number(frameSlider.value));
+        renderFrame(Number(frameSlider.value || 0));
         return;
       }
       startVibration();
     });
 
     function startLoopPlayFrames() {
-      const frameCount = data.frameXyz.length;
+      const frameCount = frameOrder.length;
       if (frameCount <= 1) return;
       const shouldLoop = Boolean(loopPlayCheckbox.checked);
       loopPlayingFrames = true;
@@ -1875,7 +2109,7 @@ export function showLogPanel(
     tabNextBtn.addEventListener('click', () => switchTab('next'));
 
     nextTsBtn.addEventListener('click', () => {
-      const frameIndex = Number(frameSlider.value);
+      const frameIndex = getActualFrameIndex(Number(frameSlider.value) || 0);
       vscodeApi.postMessage({
         type: 'previewNextInput',
         kind: 'ts',
@@ -1887,7 +2121,7 @@ export function showLogPanel(
       vscodeApi.postMessage({
         type: 'previewNextInput',
         kind: 'ts-read',
-        frameIndex: Number(frameSlider.value),
+        frameIndex: getActualFrameIndex(Number(frameSlider.value) || 0),
       });
     });
 
@@ -1927,7 +2161,7 @@ export function showLogPanel(
       vscodeApi.postMessage({
         type: 'previewNextInput',
         kind: 'sol',
-        frameIndex: Number(frameSlider.value),
+        frameIndex: getActualFrameIndex(Number(frameSlider.value) || 0),
         solvent,
       });
     });
@@ -1936,7 +2170,7 @@ export function showLogPanel(
       vscodeApi.postMessage({
         type: 'previewNextInput',
         kind: 'irc',
-        frameIndex: Number(frameSlider.value),
+        frameIndex: getActualFrameIndex(Number(frameSlider.value) || 0),
       });
     });
 
@@ -1963,8 +2197,19 @@ export function showLogPanel(
     const muted = (style.getPropertyValue('--vscode-descriptionForeground') || '#9ca3af').trim();
     const border = (style.getPropertyValue('--vscode-panel-border') || '#4b5563').trim();
     const tooltipBg = (style.getPropertyValue('--vscode-editorWidget-background') || '#111827').trim();
-    const opt = data.curves.filter(p => p.type === 'opt');
-    const minEnergy = opt.length ? Math.min(...opt.map(p => p.energy)) : 0;
+    const curveTypeLabelMap = { opt: 'opt', scan: 'scan', irc: 'irc' };
+    const curveTitleMap = { opt: '', scan: '', irc: '' };
+    const sharedCurveColor = '#58c7b2';
+    const curveColorMap = { opt: sharedCurveColor, scan: sharedCurveColor, irc: sharedCurveColor };
+    const preferredCurveTypes = normalizedCalculationType === 'IRC'
+      ? ['irc']
+      : normalizedCalculationType === 'SCAN'
+        ? ['scan']
+        : ['opt'];
+    const availableCurveTypes = preferredCurveTypes.filter((type) => data.curves.some((point) => point.type === type));
+    let activeCurveType = availableCurveTypes[0] || 'opt';
+    let activeCurveData = [];
+
     function samplePoints(points, maxCount) {
       if (points.length <= maxCount) {
         return points.map((point, sourceIndex) => ({ point, sourceIndex }));
@@ -1978,85 +2223,328 @@ export function showLogPanel(
       return result;
     }
 
-    const sampled = samplePoints(opt, 600);
-    const relativeData = sampled.map((item) => ({
-      value: [item.point.index, (item.point.energy - minEnergy) * 627.509],
-      absEnergy: item.point.energy,
-      sourceIndex: item.sourceIndex,
-    }));
+    function getCurvePoints(type) {
+      const raw = data.curves.filter((point) => point.type === type);
+      if (!raw.length) {
+        return [];
+      }
 
-    chart.setOption({
-      textStyle: { color: fg },
-      title: { text: 'PES', left: 'center', top: 6, textStyle: { color: fg, fontSize: 20, fontWeight: 600 } },
-      tooltip: {
-        trigger: 'item',
-        backgroundColor: tooltipBg,
-        borderColor: border,
-        textStyle: { color: fg },
-        formatter: (params) => {
-          const p = params.data || {};
-          const idx = p.value ? p.value[0] : '--';
-          const de = p.value ? p.value[1] : '--';
-          const abs = p.absEnergy != null ? p.absEnergy : '--';
-          return 'Step: ' + idx + '<br/>ΔE (kcal/mol): ' + de + '<br/>E (Hartree): ' + abs;
+      const ordered = raw.slice();
+      if (type === 'scan' || type === 'irc') {
+        ordered.sort((left, right) => {
+          const leftCoord = Number.isFinite(left.coordinate) ? Number(left.coordinate) : Number(left.index);
+          const rightCoord = Number.isFinite(right.coordinate) ? Number(right.coordinate) : Number(right.index);
+          return leftCoord - rightCoord;
+        });
+      }
+
+      const minEnergy = Math.min(...ordered.map((point) => point.energy));
+      const sampled = samplePoints(ordered, 600);
+      return sampled.map((item) => ({
+        value: [
+          (type === 'scan' || type === 'irc') && Number.isFinite(item.point.coordinate)
+            ? Number(item.point.coordinate)
+            : item.point.index,
+          (item.point.energy - minEnergy) * 627.509,
+        ],
+        absEnergy: item.point.energy,
+        frameIndex: item.point.frameIndex,
+        rawIndex: item.point.index,
+        pointNumber: item.point.pointNumber,
+        pathNumber: item.point.pathNumber,
+        coordinate: item.point.coordinate,
+        sourceIndex: item.sourceIndex,
+      }));
+    }
+
+    function formatAxisNumber(value, digits) {
+      if (!Number.isFinite(value)) {
+        return '';
+      }
+      return Number(value).toFixed(digits).replace(/\.?0+$/, '');
+    }
+
+    function getCurveDomain(type) {
+      const xValues = activeCurveData
+        .map((point) => Array.isArray(point.value) ? Number(point.value[0]) : NaN)
+        .filter((value) => Number.isFinite(value));
+
+      if (!xValues.length) {
+        return { min: undefined, max: undefined };
+      }
+
+      const min = Math.min(...xValues);
+      const max = Math.max(...xValues);
+      if (min === max) {
+        const singlePad = type === 'opt' ? 0.5 : 0.1;
+        return { min: min - singlePad, max: max + singlePad };
+      }
+
+      const span = max - min;
+      const pad = type === 'opt'
+        ? Math.max(span * 0.03, 0.5)
+        : Math.max(span * 0.05, 0.08);
+      return {
+        min: min - pad,
+        max: max + pad,
+      };
+    }
+
+    function getActiveCurveMarker() {
+      if (!activeCurveData.length) {
+        return null;
+      }
+
+      const exactMatch = activeCurveData.find((point) => Number.isFinite(point.frameIndex) && Number(point.frameIndex) === currentFrameIndex);
+      if (exactMatch) {
+        return exactMatch;
+      }
+
+      const frameCount = Math.max(frameOrder.length, 1);
+      const fallbackIndex = Math.max(
+        0,
+        Math.min(
+          activeCurveData.length - 1,
+          Math.round((currentDisplayFrameIndex / Math.max(frameCount - 1, 1)) * (activeCurveData.length - 1)),
+        ),
+      );
+      return activeCurveData[fallbackIndex] || null;
+    }
+
+    function buildCurveSeries() {
+      const marker = getActiveCurveMarker();
+      const series = [
+        {
+          name: curveTypeLabelMap[activeCurveType],
+          type: 'line',
+          smooth: false,
+          showSymbol: true,
+          symbol: 'circle',
+          symbolSize: activeCurveType === 'irc' ? 5 : 4,
+          sampling: 'lttb',
+          lineStyle: { width: 1.6, color: curveColorMap[activeCurveType] },
+          itemStyle: { color: curveColorMap[activeCurveType] },
+          data: activeCurveData,
         }
-      },
-      grid: {
-        left: 52,
-        right: 36,
-        top: 50,
-        bottom: 42,
-        containLabel: false,
-      },
-      xAxis: {
-        type: 'value',
-        name: 'Point',
-        nameTextStyle: { color: muted, fontSize: 11 },
-        axisLabel: { color: fg, fontSize: 11 },
-        axisLine: { lineStyle: { color: border } },
-        splitLine: { lineStyle: { color: border, opacity: 0.45 } },
-      },
-      yAxis: {
-        type: 'value',
-        name: 'ΔE (kcal/mol)',
-        scale: true,
-        nameTextStyle: { color: muted, fontSize: 11 },
-        axisLabel: { color: fg, fontSize: 11 },
-        axisLine: { lineStyle: { color: border } },
-        splitLine: { lineStyle: { color: border, opacity: 0.45 } },
-      },
-      animation: false,
-      progressive: 400,
-      hoverLayerThreshold: 3000,
-      series: [
-        { name: 'Energy', type: 'line', smooth: false, showSymbol: false, sampling: 'lttb', lineStyle: { width: 1.6, color: '#39d0ba' }, data: relativeData }
-      ]
-    });
+      ];
+
+      if (marker) {
+        series.push({
+          name: 'Current Frame',
+          type: 'scatter',
+          symbol: 'circle',
+          symbolSize: activeCurveType === 'irc' ? 10 : 8,
+          silent: true,
+          z: 5,
+          itemStyle: {
+            color: 'rgba(0, 0, 0, 0)',
+            borderColor: '#f07f59',
+            borderWidth: 2,
+          },
+          tooltip: { show: false },
+          data: [marker],
+        });
+      }
+
+      return series;
+    }
+
+    function renderCurveTypeTabs() {
+      if (!curveTypeTabs) {
+        return;
+      }
+
+      curveTypeTabs.innerHTML = availableCurveTypes
+        .map((type) => '<button class="curve-type-btn' + (type === activeCurveType ? ' active' : '') + '" data-curve-type="' + type + '">' + curveTypeLabelMap[type] + '</button>')
+        .join('');
+      curveTypeTabs.style.display = availableCurveTypes.length > 1 ? 'flex' : 'none';
+    }
+
+    function renderCurve() {
+      activeCurveData = getCurvePoints(activeCurveType);
+      const xDomain = getCurveDomain(activeCurveType);
+      if (curveSummary) {
+        curveSummary.textContent = activeCurveData.length
+          ? (curveTypeLabelMap[activeCurveType] + ' · ' + activeCurveData.length + ' points')
+          : '无可用曲线数据';
+      }
+
+      chart.setOption({
+        textStyle: { color: fg },
+        title: {
+          text: curveTitleMap[activeCurveType],
+          left: 'center',
+          top: 6,
+          textStyle: { color: fg, fontSize: 20, fontWeight: 600 },
+          show: Boolean(curveTitleMap[activeCurveType]),
+        },
+        tooltip: {
+          trigger: 'item',
+          backgroundColor: tooltipBg,
+          borderColor: border,
+          textStyle: { color: fg },
+          formatter: (params) => {
+            const point = params.data || {};
+            const idx = point.rawIndex != null ? point.rawIndex : '--';
+            const de = point.value ? point.value[1] : '--';
+            const abs = point.absEnergy != null ? point.absEnergy : '--';
+            const header = activeCurveType === 'irc'
+              ? ('Path ' + (point.pathNumber != null ? point.pathNumber : '--') + ', Point ' + (point.pointNumber != null ? point.pointNumber : idx))
+              : (curveTypeLabelMap[activeCurveType] + ': ' + (point.pointNumber != null ? point.pointNumber : idx));
+            return activeCurveType === 'irc'
+              ? (header + '<br/>IRC: ' + (point.coordinate != null ? point.coordinate.toFixed(5) : '--') + '<br/>ΔE (kcal/mol): ' + de + '<br/>E (Hartree): ' + abs)
+              : activeCurveType === 'scan'
+                ? (header + '<br/>Scan coordinate: ' + (point.coordinate != null ? point.coordinate.toFixed(5) : '--') + '<br/>ΔE (kcal/mol): ' + de + '<br/>E (Hartree): ' + abs)
+                : (header + '<br/>ΔE (kcal/mol): ' + de + '<br/>E (Hartree): ' + abs);
+          }
+        },
+        grid: {
+          left: 68,
+          right: 14,
+          top: 10,
+          bottom: 34,
+          containLabel: false,
+        },
+        xAxis: {
+          type: 'value',
+          scale: true,
+          min: xDomain.min,
+          max: xDomain.max,
+          splitNumber: activeCurveType === 'opt' ? 5 : 6,
+          axisLabel: {
+            color: fg,
+            fontSize: 11,
+            hideOverlap: true,
+            margin: 7,
+            formatter: (value) => activeCurveType === 'opt'
+              ? formatAxisNumber(Number(value), 0)
+              : formatAxisNumber(Number(value), 1),
+          },
+          axisLine: { lineStyle: { color: border } },
+          splitLine: { lineStyle: { color: border, opacity: 0.45 } },
+        },
+        yAxis: {
+          type: 'value',
+          name: 'ΔE (kcal/mol)',
+          scale: true,
+          nameLocation: 'middle',
+          nameRotate: 90,
+          nameGap: 44,
+          nameTextStyle: {
+            color: muted,
+            fontSize: 11,
+            align: 'center',
+          },
+          axisLabel: {
+            color: fg,
+            fontSize: 11,
+            margin: 10,
+            hideOverlap: true,
+            formatter: (value) => formatAxisNumber(Number(value), 1),
+          },
+          axisLine: { lineStyle: { color: border } },
+          splitLine: { lineStyle: { color: border, opacity: 0.45 } },
+        },
+        animation: false,
+        progressive: 400,
+        hoverLayerThreshold: 3000,
+        series: buildCurveSeries(),
+      }, true);
+    }
+
+    function updateCurveSelection() {
+      if (!activeCurveData.length) {
+        return;
+      }
+
+      chart.setOption({
+        series: buildCurveSeries(),
+      });
+    }
+
+    renderCurveTypeTabs();
+    renderCurve();
+
+    if (curveTypeTabs) {
+      curveTypeTabs.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+          return;
+        }
+        const nextType = target.dataset.curveType;
+        if (!nextType || nextType === activeCurveType) {
+          return;
+        }
+        activeCurveType = nextType;
+        renderCurveTypeTabs();
+        renderCurve();
+        scheduleViewportRefresh(0);
+      });
+    }
 
     chart.on('click', (params) => {
       if (!params || typeof params.dataIndex !== 'number') {
         return;
       }
 
-      const curveCount = opt.length;
-      const frameCount = data.frameXyz.length;
-      if (!curveCount || !frameCount) {
+      const point = params.data || activeCurveData[params.dataIndex];
+      const frameCount = frameOrder.length;
+      if (!activeCurveData.length || !frameCount) {
         return;
       }
 
-      const sourceIndex = params.data && typeof params.data.sourceIndex === 'number'
-        ? params.data.sourceIndex
-        : params.dataIndex;
-      const ratio = curveCount > 1 ? (sourceIndex / (curveCount - 1)) : 0;
-      const frameIndex = Math.max(0, Math.min(frameCount - 1, Math.round(ratio * (frameCount - 1))));
+      const frameIndex = Number.isFinite(point?.frameIndex)
+        ? getDisplayFrameIndex(Math.max(0, Math.min(data.frameXyz.length - 1, Number(point.frameIndex))))
+        : Math.max(
+          0,
+          Math.min(
+            frameCount - 1,
+            Math.round(((params.dataIndex || 0) / Math.max(activeCurveData.length - 1, 1)) * (frameCount - 1)),
+          ),
+        );
       stopVibration();
       frameSlider.value = String(frameIndex);
       requestRenderFrame(frameIndex);
     });
 
+    function canHandleFrameHotkeys() {
+      const activeElement = document.activeElement;
+      if (!activeElement) {
+        return true;
+      }
+      const tagName = String(activeElement.tagName || '').toUpperCase();
+      if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || activeElement.isContentEditable) {
+        return false;
+      }
+      return true;
+    }
+
+    window.addEventListener('keydown', (event) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+        return;
+      }
+      if (!canHandleFrameHotkeys()) {
+        return;
+      }
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+        return;
+      }
+
+      const delta = event.key === 'ArrowLeft' ? -1 : 1;
+      const nextIndex = Math.max(0, Math.min(frameOrder.length - 1, currentDisplayFrameIndex + delta));
+      if (nextIndex === currentDisplayFrameIndex) {
+        return;
+      }
+
+      event.preventDefault();
+      stopVibration();
+      frameSlider.value = String(nextIndex);
+      requestRenderFrame(nextIndex);
+    });
+
     function refreshViewerViewport() {
+      syncStageMetrics();
       viewer.resize();
-      viewer.zoomTo();
       viewer.render();
       chart.resize();
     }
@@ -2072,13 +2560,31 @@ export function showLogPanel(
     }
 
     syncStyleControlsFromConfig();
+    syncStageMetrics();
     updateLayoutToggleUi();
     closePanels();
     requestRenderFrame(initialFrameIndex);
     scheduleViewportRefresh(0);
     scheduleViewportRefresh(120);
 
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        syncStageMetrics();
+        scheduleViewportRefresh(40);
+      });
+      [stageElement, toolbarElement, viewerStage, infoDrawer]
+        .filter(Boolean)
+        .forEach((element) => resizeObserver.observe(element));
+    }
+
+    if (document.fonts && typeof document.fonts.ready?.then === 'function') {
+      document.fonts.ready.then(() => {
+        scheduleViewportRefresh(0);
+      });
+    }
+
     window.addEventListener('resize', () => {
+      syncStageMetrics();
       scheduleViewportRefresh(80);
     });
 
@@ -2087,6 +2593,10 @@ export function showLogPanel(
       if (resizeTimer) {
         clearTimeout(resizeTimer);
         resizeTimer = null;
+      }
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
       }
     });
   </script>

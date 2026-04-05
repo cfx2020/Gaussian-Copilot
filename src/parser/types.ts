@@ -25,6 +25,10 @@ export interface EnergyPoint {
   index: number;
   energy: number;
   type: 'opt' | 'scan' | 'irc';
+  frameIndex?: number;
+  pointNumber?: number;
+  pathNumber?: number;
+  coordinate?: number;
 }
 
 export interface OverviewInfo {
