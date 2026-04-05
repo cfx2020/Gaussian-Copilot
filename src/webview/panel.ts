@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { GaussianSummary } from '../parser/types';
+import { Atom, FrequencyMode, GaussianSummary } from '../parser/types';
 
 export interface ViewerRenderOptions {
   backgroundColor: string;
@@ -29,6 +29,19 @@ interface NextInputPlan {
   chkName: string;
   oldChkValue?: string;
   content: string;
+}
+
+interface TsIntermediatePlanPair {
+  forward: NextInputPlan;
+  reverse: NextInputPlan;
+}
+
+interface TsIntermediateCapability {
+  enabled: boolean;
+  reason?: string;
+  baseFrameIndex: number;
+  imaginaryModeIndex: number;
+  defaultStep: number;
 }
 
 function normalizeSpaces(input: string): string {
@@ -92,6 +105,13 @@ function buildReadTsRoute(route: string): string {
   const { prefix, body } = ensureRoutePrefix(route || '#p');
   const kept = removeRouteKeywords(body, ['opt', 'guess', 'geom']);
   const combined = normalizeSpaces(`${kept} opt=(readfc,ts,nofreeze,noeigentest) guess=read geom=check`);
+  return `${prefix} ${combined}`.trim();
+}
+
+function buildIntermediateRoute(route: string): string {
+  const { prefix, body } = ensureRoutePrefix(route || '#p');
+  const kept = removeRouteKeywords(body, ['opt', 'freq', 'irc', 'scrf', 'guess', 'geom']);
+  const combined = normalizeSpaces(`${kept} opt freq`);
   return `${prefix} ${combined}`.trim();
 }
 
@@ -287,6 +307,90 @@ function atomsToGaussianCoordinates(atoms: Array<{ atomicNumber: number; x: numb
   }).join('\n');
 }
 
+function buildDisplacedAtoms(
+  atoms: Atom[],
+  mode: FrequencyMode,
+  scale: number,
+): Atom[] {
+  return atoms.map((atom, index) => {
+    const vector = mode.vectors[index] ?? { x: 0, y: 0, z: 0 };
+    return {
+      atomicNumber: atom.atomicNumber,
+      x: atom.x + vector.x * scale,
+      y: atom.y + vector.y * scale,
+      z: atom.z + vector.z * scale,
+    };
+  });
+}
+
+function resolveTsIntermediateCapability(summary: GaussianSummary): TsIntermediateCapability {
+  const defaultStep = 0.3;
+  const baseFrameIndex = Math.max(summary.frames.length - 1, 0);
+  const imaginaryModeIndex = summary.frequencies.findIndex((mode) => Number(mode.value) < 0);
+  const atoms = summary.frames[baseFrameIndex]?.atoms ?? [];
+  const negativeModes = summary.frequencies
+    .map((mode, index) => ({ mode, index }))
+    .filter((entry) => Number(entry.mode.value) < 0);
+
+  if (!atoms.length) {
+    return {
+      enabled: false,
+      reason: '缺少最终 TS 结构',
+      baseFrameIndex,
+      imaginaryModeIndex,
+      defaultStep,
+    };
+  }
+
+  if (!summary.frequencies.length) {
+    return {
+      enabled: false,
+      reason: '缺少频率信息',
+      baseFrameIndex,
+      imaginaryModeIndex,
+      defaultStep,
+    };
+  }
+
+  if (negativeModes.length !== 1) {
+    return {
+      enabled: false,
+      reason: '仅支持单虚频 TS',
+      baseFrameIndex,
+      imaginaryModeIndex,
+      defaultStep,
+    };
+  }
+
+  const targetMode = negativeModes[0].mode;
+  if (!targetMode.vectors.length) {
+    return {
+      enabled: false,
+      reason: '缺少虚频位移向量',
+      baseFrameIndex,
+      imaginaryModeIndex: negativeModes[0].index,
+      defaultStep,
+    };
+  }
+
+  if (targetMode.vectors.length !== atoms.length) {
+    return {
+      enabled: false,
+      reason: '虚频位移向量与原子数不匹配',
+      baseFrameIndex,
+      imaginaryModeIndex: negativeModes[0].index,
+      defaultStep,
+    };
+  }
+
+  return {
+    enabled: true,
+    baseFrameIndex,
+    imaginaryModeIndex: negativeModes[0].index,
+    defaultStep,
+  };
+}
+
 async function buildNextInputPlan(
   logPath: string,
   summary: GaussianSummary,
@@ -361,6 +465,64 @@ async function buildNextInputPlan(
   };
 }
 
+async function buildTsIntermediatePlanPair(
+  logPath: string,
+  summary: GaussianSummary,
+  capability: TsIntermediateCapability,
+  step: number,
+): Promise<TsIntermediatePlanPair> {
+  if (!capability.enabled) {
+    throw new Error(capability.reason || '当前结果不支持生成 TS 前后中间体');
+  }
+
+  const template = await loadTemplateFromCompanionGjf(logPath) ?? defaultTemplateFromSummary(logPath, summary);
+  const parsed = path.parse(logPath);
+  const baseAtoms = summary.frames[capability.baseFrameIndex]?.atoms ?? [];
+  const mode = summary.frequencies[capability.imaginaryModeIndex];
+  if (!baseAtoms.length || !mode) {
+    throw new Error('缺少 TS 结构或虚频模式，无法生成中间体');
+  }
+
+  const normalizedStep = Math.max(0.05, Math.min(1, Math.abs(step) || capability.defaultStep));
+  const route = buildIntermediateRoute(template.route);
+  const basisTail = template.basisTail;
+
+  const buildPlan = (direction: 'forward' | 'reverse', label: string, scale: number): NextInputPlan => {
+    const suffix = direction === 'forward' ? 'f' : 'r';
+    const outputPath = path.join(parsed.dir, `${parsed.name}${suffix}.gjf`);
+    const outputBase = path.parse(outputPath).name;
+    const chkName = `${outputBase}.chk`;
+    const link0 = normalizeLink0(template.link0, chkName);
+    const displacedAtoms = buildDisplacedAtoms(baseAtoms, mode, scale);
+    const coordinates = atomsToGaussianCoordinates(displacedAtoms);
+    const lines: string[] = [];
+    lines.push(...link0);
+    lines.push(route);
+    lines.push('');
+    lines.push(`${template.title} (${label})`);
+    lines.push('');
+    lines.push(template.chargeMultiplicity);
+    lines.push(coordinates);
+    lines.push('');
+    if (basisTail) {
+      lines.push(basisTail);
+      lines.push('');
+    }
+
+    return {
+      outputPath,
+      route,
+      chkName,
+      content: `${lines.join('\n').replace(/\n+$/g, '')}\n\n\n`,
+    };
+  };
+
+  return {
+    forward: buildPlan('forward', `forward intermediate, step=${normalizedStep.toFixed(2)}`, normalizedStep),
+    reverse: buildPlan('reverse', `reverse intermediate, step=${normalizedStep.toFixed(2)}`, -normalizedStep),
+  };
+}
+
 async function writeNextInputFile(plan: NextInputPlan): Promise<string> {
   await fs.writeFile(plan.outputPath, plan.content, 'utf8');
   return plan.outputPath;
@@ -419,6 +581,7 @@ export function showLogPanel(
   const cspSource = panel.webview.cspSource;
   const frameXyz = summary.frames.map((_, i) => toXyzString(summary, i));
   const baseAtoms = summary.frames.length > 0 ? summary.frames[summary.frames.length - 1].atoms : [];
+  const tsIntermediateCapability = resolveTsIntermediateCapability(summary);
   const payload = JSON.stringify({
     frameXyz,
     baseAtoms,
@@ -431,6 +594,9 @@ export function showLogPanel(
     overview: summary.overview,
     thermo: summary.thermo,
     viewer: viewerOptions,
+    nextCapabilities: {
+      tsIntermediates: tsIntermediateCapability,
+    },
   });
 
   panel.webview.onDidReceiveMessage(async (message: unknown) => {
@@ -440,6 +606,7 @@ export function showLogPanel(
       frameIndex?: number;
       solvent?: string;
       currentValue?: string;
+      step?: number;
     };
 
     if (req?.type === 'requestCustomSolvent') {
@@ -458,6 +625,40 @@ export function showLogPanel(
     }
 
     if ((req?.type !== 'generateNextInput' && req?.type !== 'previewNextInput') || !req.kind) {
+      if (req?.type !== 'generateTsIntermediates') {
+        return;
+      }
+    }
+
+    if (req?.type === 'generateTsIntermediates') {
+      try {
+        const pair = await buildTsIntermediatePlanPair(
+          sourceLogPath,
+          summary,
+          tsIntermediateCapability,
+          Number(req.step),
+        );
+        const outputPaths = await Promise.all([
+          writeNextInputFile(pair.forward),
+          writeNextInputFile(pair.reverse),
+        ]);
+
+        for (const outputPath of outputPaths) {
+          const doc = await vscode.workspace.openTextDocument(outputPath);
+          await vscode.window.showTextDocument(doc, { preview: false });
+        }
+
+        await vscode.window.showInformationMessage(
+          `已生成前后中间体输入文件：${outputPaths.map((item) => path.basename(item)).join('、')}`,
+        );
+      } catch (error) {
+        const messageText = error instanceof Error ? error.message : String(error);
+        await vscode.window.showErrorMessage(`生成 TS 前后中间体失败：${messageText}`);
+      }
+      return;
+    }
+
+    if (!req?.kind) {
       return;
     }
 
@@ -977,9 +1178,56 @@ export function showLogPanel(
       filter: brightness(1.08);
       transform: translateY(-1px);
     }
+    .action-row button:disabled {
+      cursor: not-allowed;
+      opacity: 0.56;
+      filter: none;
+      transform: none;
+    }
     #mode { min-width: 0; }
     .section-title { font-weight: 600; margin-top: 8px; margin-bottom: 4px; }
     .hint { opacity: 0.8; font-size: 12px; color: var(--gc-text-soft); }
+    .next-group {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid color-mix(in srgb, var(--gc-border) 56%, transparent);
+    }
+    .next-group:first-child {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: none;
+    }
+    .next-group-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: color-mix(in srgb, var(--vscode-foreground) 94%, #d7fff6);
+      margin-bottom: 4px;
+    }
+    .next-group-status {
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--gc-text-soft);
+      line-height: 1.5;
+    }
+    .next-group-status.ready {
+      color: #bdf9e8;
+    }
+    .step-field {
+      align-items: center;
+    }
+    .step-field label {
+      width: auto;
+      min-width: 54px;
+    }
+    .step-field input[type="range"] {
+      flex: 1;
+      max-width: none;
+    }
+    .preview-btn.active {
+      background: linear-gradient(160deg, rgba(27, 122, 101, 0.72), rgba(19, 89, 108, 0.68));
+      border-color: var(--gc-accent);
+      color: #effff9;
+    }
     .tabs { display: flex; gap: 8px; margin-bottom: 8px; }
     .tab-btn { border: 1px solid color-mix(in srgb, var(--gc-border) 82%, transparent); background: transparent; color: inherit; border-radius: 8px; padding: 5px 11px; cursor: pointer; flex: 1 1 90px; min-width: 0; }
     .tab-btn.active { background: linear-gradient(160deg, rgba(30, 108, 98, 0.62), rgba(20, 72, 98, 0.58)); color: #dffff6; }
@@ -1319,39 +1567,60 @@ export function showLogPanel(
               <table class="kv-table" id="thermoTable"></table>
             </div>
             <div id="tabNext" class="tab-panel">
-              <div class="action-row" style="margin-top:0;">
-                <button id="nextTsBtn">从当前帧进行TS过渡态搜索</button>
+              <div class="next-group">
+                <div class="next-group-title">常规后续任务</div>
+                <div class="action-row" style="margin-top:0;">
+                  <button id="nextTsBtn">从当前帧进行TS过渡态搜索</button>
+                </div>
+                <div class="action-row">
+                  <button id="nextTsReadBtn">从当前帧进行TS过渡态搜索（read方法/更快）</button>
+                </div>
+                <div class="action-row">
+                  <select id="nextSolvent" class="solvent-select">
+                    <option value="water">Water</option>
+                    <option value="DMSO">DMSO</option>
+                    <option value="nitro-methane">Nitro-methane</option>
+                    <option value="acetonitrile">Acetonitrile</option>
+                    <option value="methanol">Methanol</option>
+                    <option value="ethanol">Ethanol</option>
+                    <option value="acetone">Acetone</option>
+                    <option value="dichloromethane">Dichloromethane</option>
+                    <option value="dichloroethane">Dichloroethane</option>
+                    <option value="THF">THF</option>
+                    <option value="aniline">Aniline</option>
+                    <option value="chlorobenzene">Chlorobenzene</option>
+                    <option value="chloroform">Chloroform</option>
+                    <option value="diethyl ether">Diethyl ether</option>
+                    <option value="toluene">Toluene</option>
+                    <option value="benzene">Benzene</option>
+                    <option value="CCl4">CCl4</option>
+                    <option value="cyclohexane">Cyclohexane</option>
+                    <option value="heptane">Heptane</option>
+                    <option value="__custom__">自定义...</option>
+                  </select>
+                  <button id="nextSolBtn">进行Sol溶剂化</button>
+                </div>
+                <div class="action-row">
+                  <button id="nextIrcBtn">进行IRC路径验证</button>
+                </div>
               </div>
-              <div class="action-row">
-                <button id="nextTsReadBtn">从当前帧进行TS过渡态搜索（read方法/更快）</button>
-              </div>
-              <div class="action-row">
-                <select id="nextSolvent" class="solvent-select">
-                  <option value="water">Water</option>
-                  <option value="DMSO">DMSO</option>
-                  <option value="nitro-methane">Nitro-methane</option>
-                  <option value="acetonitrile">Acetonitrile</option>
-                  <option value="methanol">Methanol</option>
-                  <option value="ethanol">Ethanol</option>
-                  <option value="acetone">Acetone</option>
-                  <option value="dichloromethane">Dichloromethane</option>
-                  <option value="dichloroethane">Dichloroethane</option>
-                  <option value="THF">THF</option>
-                  <option value="aniline">Aniline</option>
-                  <option value="chlorobenzene">Chlorobenzene</option>
-                  <option value="chloroform">Chloroform</option>
-                  <option value="diethyl ether">Diethyl ether</option>
-                  <option value="toluene">Toluene</option>
-                  <option value="benzene">Benzene</option>
-                  <option value="CCl4">CCl4</option>
-                  <option value="cyclohexane">Cyclohexane</option>
-                  <option value="heptane">Heptane</option>
-                  <option value="__custom__">自定义...</option>
-                </select>
-                <button id="nextSolBtn">进行Sol溶剂化</button>
-              </div>
-              <div class="action-row">
-                <button id="nextIrcBtn">进行IRC路径验证</button>
+              <div id="tsIntermediateGroup" class="next-group">
+                <div class="next-group-title">TS 前后中间体</div>
+                <div class="hint">基于最终 TS 几何和唯一虚频模式预览正反向位移，并一次生成两个 OPT+FREQ 输入。</div>
+                <div class="field step-field">
+                  <label for="tsIntermediateStep">位移步长</label>
+                  <input id="tsIntermediateStep" type="range" min="0.05" max="1.00" step="0.05" value="0.30" />
+                  <span id="tsIntermediateStepLabel">0.30</span>
+                </div>
+                <div class="action-row">
+                  <button id="tsIntermediateBaseBtn" class="preview-btn">TS 原结构</button>
+                  <button id="tsIntermediateForwardBtn" class="preview-btn">前向位移</button>
+                  <button id="tsIntermediateReverseBtn" class="preview-btn">后向位移</button>
+                </div>
+                <div class="action-row">
+                  <button id="tsIntermediateGenerateBtn">生成前后中间体（OPT+FREQ）</button>
+                </div>
+                <div id="tsIntermediateStatus" class="next-group-status"></div>
               </div>
             </div>
           </div>
@@ -1413,6 +1682,13 @@ export function showLogPanel(
     const nextSolBtn = document.getElementById('nextSolBtn');
     const nextIrcBtn = document.getElementById('nextIrcBtn');
     const nextSolvent = document.getElementById('nextSolvent');
+    const tsIntermediateStep = document.getElementById('tsIntermediateStep');
+    const tsIntermediateStepLabel = document.getElementById('tsIntermediateStepLabel');
+    const tsIntermediateBaseBtn = document.getElementById('tsIntermediateBaseBtn');
+    const tsIntermediateForwardBtn = document.getElementById('tsIntermediateForwardBtn');
+    const tsIntermediateReverseBtn = document.getElementById('tsIntermediateReverseBtn');
+    const tsIntermediateGenerateBtn = document.getElementById('tsIntermediateGenerateBtn');
+    const tsIntermediateStatus = document.getElementById('tsIntermediateStatus');
     const renderStyle = document.getElementById('renderStyle');
     const bgColor = document.getElementById('bgColor');
     const stickRadius = document.getElementById('stickRadius');
@@ -1486,6 +1762,18 @@ export function showLogPanel(
     let vibrationCacheKey = '';
     let vibrationCacheCycle = [];
     let resizeObserver = null;
+    const tsIntermediateCapability = data.nextCapabilities?.tsIntermediates || {
+      enabled: false,
+      reason: '当前结果不支持生成 TS 前后中间体',
+      baseFrameIndex: Math.max((data.frameXyz || []).length - 1, 0),
+      imaginaryModeIndex: -1,
+      defaultStep: 0.30,
+    };
+    const tsIntermediateBaseAtoms = Array.isArray(data.baseAtoms) ? data.baseAtoms : [];
+    const tsIntermediateMode = Array.isArray(data.frequencies)
+      ? data.frequencies[Number(tsIntermediateCapability.imaginaryModeIndex)]
+      : undefined;
+    let tsIntermediatePreviewMode = 'off';
 
     function syncStageMetrics() {
       if (!stageElement || !toolbarElement) {
@@ -1771,6 +2059,105 @@ export function showLogPanel(
       viewer.render();
     }
 
+    function getTsIntermediateStepValue() {
+      const parsed = Number(tsIntermediateStep?.value || tsIntermediateCapability.defaultStep || 0.30);
+      return Math.max(0.05, Math.min(1, Number.isFinite(parsed) ? parsed : 0.30));
+    }
+
+    function syncTsIntermediateStepLabel() {
+      if (!tsIntermediateStepLabel) {
+        return;
+      }
+      tsIntermediateStepLabel.textContent = getTsIntermediateStepValue().toFixed(2);
+    }
+
+    function buildTsIntermediatePreviewAtoms(scale) {
+      if (!tsIntermediateCapability.enabled || !tsIntermediateMode || !Array.isArray(tsIntermediateMode.vectors)) {
+        return [];
+      }
+      return tsIntermediateBaseAtoms.map((atom, index) => {
+        const vector = tsIntermediateMode.vectors[index] || { x: 0, y: 0, z: 0 };
+        return {
+          atomicNumber: atom.atomicNumber,
+          x: Number(atom.x) + Number(vector.x || 0) * scale,
+          y: Number(atom.y) + Number(vector.y || 0) * scale,
+          z: Number(atom.z) + Number(vector.z || 0) * scale,
+        };
+      });
+    }
+
+    function syncTsIntermediatePreviewButtons() {
+      const buttons = [
+        { element: tsIntermediateBaseBtn, mode: 'base' },
+        { element: tsIntermediateForwardBtn, mode: 'forward' },
+        { element: tsIntermediateReverseBtn, mode: 'reverse' },
+      ];
+      for (const item of buttons) {
+        if (!item.element) {
+          continue;
+        }
+        item.element.classList.toggle('active', tsIntermediatePreviewMode === item.mode);
+      }
+    }
+
+    function updateTsIntermediateStatus() {
+      if (!tsIntermediateStatus) {
+        return;
+      }
+
+      if (!tsIntermediateCapability.enabled) {
+        tsIntermediateStatus.textContent = tsIntermediateCapability.reason || '当前结果不支持生成 TS 前后中间体。';
+        tsIntermediateStatus.classList.remove('ready');
+        return;
+      }
+
+      const step = getTsIntermediateStepValue().toFixed(2);
+      let text = '已识别到单虚频 TS，可基于最终 TS 几何预览并生成前/后中间体。';
+      if (tsIntermediatePreviewMode === 'base') {
+        text = '正在预览最终 TS 结构，步长 ' + step + '。';
+      } else if (tsIntermediatePreviewMode === 'forward') {
+        text = '正在预览前向位移结构，步长 ' + step + '。';
+      } else if (tsIntermediatePreviewMode === 'reverse') {
+        text = '正在预览后向位移结构，步长 ' + step + '。';
+      }
+      tsIntermediateStatus.textContent = text;
+      tsIntermediateStatus.classList.add('ready');
+    }
+
+    function syncTsIntermediateAvailability() {
+      const enabled = Boolean(tsIntermediateCapability.enabled);
+      const previewButtons = [tsIntermediateBaseBtn, tsIntermediateForwardBtn, tsIntermediateReverseBtn, tsIntermediateGenerateBtn];
+      for (const button of previewButtons) {
+        if (button) {
+          button.disabled = !enabled;
+        }
+      }
+      if (tsIntermediateStep) {
+        tsIntermediateStep.disabled = !enabled;
+        tsIntermediateStep.value = Number(tsIntermediateCapability.defaultStep || 0.30).toFixed(2);
+      }
+      syncTsIntermediateStepLabel();
+      syncTsIntermediatePreviewButtons();
+      updateTsIntermediateStatus();
+    }
+
+    function previewTsIntermediate(mode) {
+      if (!tsIntermediateCapability.enabled) {
+        return;
+      }
+      stopVibration();
+      tsIntermediatePreviewMode = mode;
+      syncTsIntermediatePreviewButtons();
+      updateTsIntermediateStatus();
+      if (mode === 'base') {
+        renderXyz(data.frameXyz[tsIntermediateCapability.baseFrameIndex] || xyzFromAtoms(tsIntermediateBaseAtoms), { keepView: true });
+        return;
+      }
+      const direction = mode === 'forward' ? 1 : -1;
+      const previewAtoms = buildTsIntermediatePreviewAtoms(getTsIntermediateStepValue() * direction);
+      renderXyz(xyzFromAtoms(previewAtoms), { keepView: true, forceRebuild: true });
+    }
+
     function parseCssColorToHex(input) {
       const canvas = document.createElement('canvas');
       canvas.width = 1;
@@ -1876,6 +2263,11 @@ export function showLogPanel(
     }
 
     function renderFrame(index) {
+      if (tsIntermediatePreviewMode !== 'off') {
+        tsIntermediatePreviewMode = 'off';
+        syncTsIntermediatePreviewButtons();
+        updateTsIntermediateStatus();
+      }
       currentDisplayFrameIndex = index;
       currentFrameIndex = getActualFrameIndex(index);
       frameSlider.value = String(index);
@@ -2171,6 +2563,35 @@ export function showLogPanel(
         type: 'previewNextInput',
         kind: 'irc',
         frameIndex: getActualFrameIndex(Number(frameSlider.value) || 0),
+      });
+    });
+
+    syncTsIntermediateAvailability();
+
+    tsIntermediateStep.addEventListener('input', () => {
+      syncTsIntermediateStepLabel();
+      updateTsIntermediateStatus();
+      if (tsIntermediatePreviewMode === 'forward' || tsIntermediatePreviewMode === 'reverse') {
+        previewTsIntermediate(tsIntermediatePreviewMode);
+      }
+    });
+
+    tsIntermediateBaseBtn.addEventListener('click', () => {
+      previewTsIntermediate('base');
+    });
+
+    tsIntermediateForwardBtn.addEventListener('click', () => {
+      previewTsIntermediate('forward');
+    });
+
+    tsIntermediateReverseBtn.addEventListener('click', () => {
+      previewTsIntermediate('reverse');
+    });
+
+    tsIntermediateGenerateBtn.addEventListener('click', () => {
+      vscodeApi.postMessage({
+        type: 'generateTsIntermediates',
+        step: getTsIntermediateStepValue(),
       });
     });
 
