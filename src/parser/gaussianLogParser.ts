@@ -1,6 +1,28 @@
 import * as fs from 'fs/promises';
 import { Atom, EnergyPoint, Frame, FrequencyMode, GaussianSummary, OverviewInfo, ThermoInfo } from './types';
 
+function detectTerminationReason(content: string): string | undefined {
+  if (/l9999\.exe/i.test(content)) {
+    return 'L9999';
+  }
+  if (/l103\.exe/i.test(content)) {
+    return 'L103';
+  }
+  if (/l502\.exe/i.test(content)) {
+    return 'L502';
+  }
+  if (/segmentation fault/i.test(content)) {
+    return 'Segmentation fault';
+  }
+  if (/killed|signal/i.test(content)) {
+    return 'Killed';
+  }
+  if (/error termination/i.test(content)) {
+    return 'Error termination';
+  }
+  return undefined;
+}
+
 function parseFloatGaussianToken(token: string): number {
   return Number(token.replace(/d/i, 'e'));
 }
@@ -45,6 +67,7 @@ function parseFrequencyBlock(lines: string[], startIndex: number, values: number
 export async function parseGaussianLog(filePath: string, maxFrames: number): Promise<GaussianSummary> {
   const content = await fs.readFile(filePath, 'utf8');
   const lines = content.split(/\r?\n/);
+  const terminationReason = detectTerminationReason(content);
 
   const frames: Frame[] = [];
   const frequencies: FrequencyMode[] = [];
@@ -585,6 +608,10 @@ export async function parseGaussianLog(filePath: string, maxFrames: number): Pro
     entropyS,
   };
 
+  const terminationStatus: GaussianSummary['terminationStatus'] = normalTermination
+    ? 'normal'
+    : (terminationReason ? 'error' : 'running');
+
   return {
     frames: clippedFrames,
     frequencies,
@@ -592,6 +619,8 @@ export async function parseGaussianLog(filePath: string, maxFrames: number): Pro
     freeEnergy,
     basis,
     normalTermination,
+    terminationStatus,
+    terminationReason,
     curves,
     overview,
     thermo,

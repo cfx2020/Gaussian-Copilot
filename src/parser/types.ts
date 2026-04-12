@@ -68,6 +68,8 @@ export interface GaussianSummary {
   freeEnergy?: number;
   basis?: string;
   normalTermination: boolean;
+  terminationStatus: 'normal' | 'error' | 'running';
+  terminationReason?: string;
   curves: EnergyPoint[];
   overview: OverviewInfo;
   thermo: ThermoInfo;

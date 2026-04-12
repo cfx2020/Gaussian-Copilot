@@ -122,6 +122,39 @@ function getStateIcon(state: JobState): vscode.ThemeIcon {
   }
 }
 
+function formatCompactTime(isoText: string): string {
+  const date = new Date(isoText);
+  if (Number.isNaN(date.getTime())) {
+    return isoText;
+  }
+
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatBatchDescription(jobs: JobRecord[]): string {
+  const count = (state: JobState) => jobs.filter((job) => job.state === state).length;
+  const parts: string[] = [];
+
+  if (count('running') > 0) {
+    parts.push(`运行 ${count('running')}`);
+  }
+  if (count('queued') > 0) {
+    parts.push(`排队 ${count('queued')}`);
+  }
+  if (count('completed') > 0) {
+    parts.push(`完成 ${count('completed')}`);
+  }
+  if (count('failed') > 0) {
+    parts.push(`失败 ${count('failed')}`);
+  }
+  if (count('cancelled') > 0) {
+    parts.push(`取消 ${count('cancelled')}`);
+  }
+
+  return parts.length > 0 ? parts.join(' · ') : '暂无状态';
+}
+
 function summarizeBatchStates(jobs: JobRecord[]): string {
   const count = (state: JobState) => jobs.filter((job) => job.state === state).length;
   return `运${count('running')} 排${count('queued')} 成${count('completed')} 失${count('failed')} 取${count('cancelled')}`;
@@ -153,9 +186,26 @@ class JobTreeItem extends vscode.TreeItem {
   constructor(public readonly job: JobRecord) {
     const displayName = toDisplayJobName(job.fileName);
     super(displayName, vscode.TreeItemCollapsibleState.None);
-    this.description = getStateLabel(job.state);
-    const reasonLine = job.failureReason ? `\n失败原因: ${job.failureReason}` : '';
-    this.tooltip = `${displayName}\nJobID: ${job.id}\n状态: ${getStateLabel(job.state)}\n提交时间: ${job.submittedAt}${reasonLine}`;
+    const submitted = formatCompactTime(job.submittedAt);
+    this.description = job.failureReason
+      ? `${getStateLabel(job.state)} · ${job.failureReason}`
+      : `${getStateLabel(job.state)} · ${submitted}`;
+    const detail = new vscode.MarkdownString(undefined, true);
+    detail.isTrusted = false;
+    detail.appendMarkdown(`**${displayName}**\n\n`);
+    detail.appendMarkdown(`状态：\`${getStateLabel(job.state)}\`\n\n`);
+    detail.appendMarkdown(`Job ID：\`${job.id}\`\n\n`);
+    detail.appendMarkdown(`提交时间：\`${job.submittedAt}\`\n\n`);
+    if (job.failureReason) {
+      detail.appendMarkdown(`失败原因：${job.failureReason}\n\n`);
+    }
+    if (job.filePath) {
+      detail.appendMarkdown(`输入文件：\`${job.filePath}\`\n\n`);
+    }
+    if (job.remotePath) {
+      detail.appendMarkdown(`远端路径：\`${job.remotePath}\`\n\n`);
+    }
+    this.tooltip = detail;
     this.contextValue = 'chemAssistJobItem';
     this.iconPath = getStateIcon(job.state);
   }
@@ -164,10 +214,16 @@ class JobTreeItem extends vscode.TreeItem {
 class BatchTreeItem extends vscode.TreeItem {
   constructor(public readonly batch: BatchRecord) {
     super(`${batch.startTime}`, vscode.TreeItemCollapsibleState.Expanded);
-    this.description = `${batch.jobs.length} 个作业`;
-    this.tooltip = `时间: ${batch.startTime}\n作业数: ${batch.jobs.length}\n${summarizeBatchStates(batch.jobs)}`;
+    this.description = formatBatchDescription(batch.jobs);
+    const detail = new vscode.MarkdownString(undefined, true);
+    detail.isTrusted = false;
+    detail.appendMarkdown(`**提交批次**\n\n`);
+    detail.appendMarkdown(`时间：\`${batch.startTime}\`\n\n`);
+    detail.appendMarkdown(`作业数：\`${batch.jobs.length}\`\n\n`);
+    detail.appendMarkdown(`概览：${summarizeBatchStates(batch.jobs)}`);
+    this.tooltip = detail;
     this.contextValue = 'chemAssistJobBatchItem';
-    this.iconPath = undefined;
+    this.iconPath = new vscode.ThemeIcon('layers');
   }
 }
 

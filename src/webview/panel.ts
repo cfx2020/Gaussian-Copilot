@@ -591,6 +591,8 @@ export function showLogPanel(
     freeEnergy: summary.freeEnergy,
     basis: summary.basis,
     normalTermination: summary.normalTermination,
+    terminationStatus: summary.terminationStatus,
+    terminationReason: summary.terminationReason,
     overview: summary.overview,
     thermo: summary.thermo,
     viewer: viewerOptions,
@@ -779,59 +781,93 @@ export function showLogPanel(
       min-width: 12px;
     }
     .toolbar-brand {
-      font-size: 16px;
+      font-family: 'Avenir Next', 'SF Pro Display', 'Segoe UI', sans-serif;
+      font-size: 18px;
       font-weight: 700;
-      letter-spacing: 0.02em;
-      color: inherit;
+      letter-spacing: 0.01em;
+      color: color-mix(in srgb, var(--vscode-editor-foreground) 96%, #f5fbff);
       white-space: nowrap;
       margin-left: auto;
       margin-right: 6px;
       padding: 0;
-      border-radius: 0;
+      text-shadow: 0 1px 0 rgba(0, 0, 0, 0.22);
       background: transparent;
       border: 0;
     }
     .toolbar-btn {
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
       align-items: center;
       justify-content: center;
-      gap: 4px;
-      border: 1px solid color-mix(in srgb, var(--gc-border) 68%, transparent);
-      background: rgba(35, 96, 93, 0.34);
-      color: var(--gc-text-soft);
-      border-radius: 8px;
-      padding: 6px 12px;
+      gap: 8px;
+      min-height: 44px;
+      min-width: 0;
+      padding: 0 14px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      background: color-mix(in srgb, var(--gc-panel-bg-muted) 82%, transparent);
+      color: var(--gc-text-main);
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
       cursor: pointer;
-      font-size: 13px;
-      min-height: 42px;
-      min-width: 60px;
-      flex-grow: 0;
-      flex-shrink: 0;
-      transition: background 0.12s ease, border-color 0.12s ease;
+      transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
     }
     .toolbar-btn:hover {
-      background: rgba(35, 96, 93, 0.56);
-      border-color: var(--gc-border);
+      background: color-mix(in srgb, var(--gc-panel-bg-muted) 90%, var(--gc-accent-soft));
+      border-color: var(--gc-chip-border);
     }
     .toolbar-btn.active {
-      background: rgba(21, 177, 163, 0.45);
-      border-color: var(--gc-accent);
-      color: #d5fff5;
+      background: linear-gradient(180deg, color-mix(in srgb, var(--gc-accent-soft) 92%, transparent), color-mix(in srgb, var(--gc-accent-soft) 78%, transparent));
+      border-color: var(--gc-panel-border-strong);
+      color: var(--gc-text-main);
+      box-shadow: 0 0 0 1px var(--gc-chip-border);
     }
     .toolbar-btn-icon {
-      font-size: 18px;
-      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--gc-accent-soft) 86%, transparent);
+      color: var(--gc-accent-strong);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
     }
     .toolbar-btn-label {
-      font-size: 10px;
+      font-size: 12px;
+      letter-spacing: 0.01em;
       white-space: nowrap;
     }
     .toolbar-sep {
       width: 1px;
-      height: 32px;
-      background: color-mix(in srgb, var(--gc-border) 52%, transparent);
+      height: auto;
+      min-height: 44px;
+      background: linear-gradient(180deg, transparent, var(--gc-panel-border), transparent);
       flex-shrink: 0;
+    }
+    .toolbar-status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 0 4px 0 10px;
+      border: 0;
+      background: transparent;
+      color: color-mix(in srgb, var(--gc-text-soft) 92%, var(--gc-text-main));
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .toolbar-status.ok {
+      color: color-mix(in srgb, #71d7ac 72%, var(--gc-text-main));
+    }
+    .toolbar-status.running {
+      color: color-mix(in srgb, #6bc3e1 74%, var(--gc-text-main));
+    }
+    .toolbar-status.warn {
+      color: color-mix(in srgb, #f1b36e 74%, var(--gc-text-main));
     }
     .floating-panel {
       position: absolute;
@@ -1418,6 +1454,214 @@ export function showLogPanel(
         height: min(52%, 300px);
       }
     }
+
+    body {
+      --gc-font-sans: 'Aptos', 'SF Pro Text', 'Segoe UI Variable', 'Segoe UI', sans-serif;
+      --gc-radius-xl: 18px;
+      --gc-radius-lg: 14px;
+      --gc-radius-md: 10px;
+      --gc-radius-sm: 8px;
+      --gc-shadow-soft: 0 18px 38px rgba(15, 23, 42, 0.14);
+      --gc-shadow-panel: 0 18px 46px rgba(15, 23, 42, 0.18);
+      --gc-accent-strong: #1d8fa3;
+      --gc-accent-soft: #d6eef4;
+      --gc-accent-line: rgba(29, 143, 163, 0.24);
+      --gc-success: #1f8d68;
+      --gc-danger: #c55353;
+      --gc-warning: #bf7b23;
+      --gc-page-tint-a: rgba(79, 160, 186, 0.12);
+      --gc-page-tint-b: rgba(27, 79, 128, 0.08);
+      --gc-panel-bg: color-mix(in srgb, var(--vscode-editorWidget-background) 92%, #eff7fa);
+      --gc-panel-bg-strong: color-mix(in srgb, var(--vscode-editorWidget-background) 96%, #f7fbfd);
+      --gc-panel-bg-muted: color-mix(in srgb, var(--vscode-sideBar-background) 92%, #f0f7fb);
+      --gc-panel-border: color-mix(in srgb, var(--vscode-panel-border) 76%, rgba(29, 143, 163, 0.42));
+      --gc-panel-border-strong: color-mix(in srgb, var(--vscode-panel-border) 52%, rgba(29, 143, 163, 0.68));
+      --gc-text-main: color-mix(in srgb, var(--vscode-editor-foreground) 96%, #102331);
+      --gc-text-soft-2: color-mix(in srgb, var(--vscode-descriptionForeground) 88%, #5d7282);
+      --gc-chip-bg: rgba(255, 255, 255, 0.82);
+      --gc-chip-border: rgba(29, 143, 163, 0.18);
+      --gc-viewer-bg: color-mix(in srgb, var(--vscode-editor-background) 95%, #f8fbfd);
+      --gc-measure-bg: rgba(255, 255, 255, 0.82);
+      --gc-measure-border: rgba(29, 143, 163, 0.18);
+      font-family: var(--gc-font-sans);
+      color: var(--gc-text-main);
+      background:
+        radial-gradient(860px 420px at -8% -10%, var(--gc-page-tint-a), transparent 60%),
+        radial-gradient(920px 480px at 112% 110%, var(--gc-page-tint-b), transparent 62%),
+        linear-gradient(180deg, color-mix(in srgb, var(--vscode-editor-background) 92%, #f8fbfd), var(--vscode-editor-background));
+    }
+
+    body.vscode-dark,
+    body.vscode-high-contrast {
+      --gc-accent-strong: #35b7c8;
+      --gc-accent-soft: #11343d;
+      --gc-accent-line: rgba(53, 183, 200, 0.24);
+      --gc-success: #29b07f;
+      --gc-danger: #ef7474;
+      --gc-warning: #dfaa43;
+      --gc-page-tint-a: rgba(39, 111, 132, 0.24);
+      --gc-page-tint-b: rgba(12, 39, 69, 0.26);
+      --gc-panel-bg: color-mix(in srgb, var(--vscode-editorWidget-background) 92%, #0d1824);
+      --gc-panel-bg-strong: color-mix(in srgb, var(--vscode-editorWidget-background) 97%, #0a1520);
+      --gc-panel-bg-muted: color-mix(in srgb, var(--vscode-sideBar-background) 94%, #101a27);
+      --gc-panel-border: color-mix(in srgb, var(--vscode-panel-border) 74%, rgba(53, 183, 200, 0.34));
+      --gc-panel-border-strong: color-mix(in srgb, var(--vscode-panel-border) 54%, rgba(53, 183, 200, 0.7));
+      --gc-text-main: color-mix(in srgb, var(--vscode-editor-foreground) 98%, #eefbff);
+      --gc-text-soft-2: color-mix(in srgb, var(--vscode-descriptionForeground) 86%, #90afbf);
+      --gc-chip-bg: rgba(17, 30, 44, 0.9);
+      --gc-chip-border: rgba(53, 183, 200, 0.18);
+      --gc-viewer-bg: color-mix(in srgb, var(--vscode-editor-background) 92%, #0b1420);
+      --gc-measure-bg: rgba(11, 20, 32, 0.78);
+      --gc-measure-border: rgba(53, 183, 200, 0.2);
+      --gc-shadow-soft: 0 22px 48px rgba(0, 0, 0, 0.34);
+      --gc-shadow-panel: 0 24px 52px rgba(0, 0, 0, 0.42);
+      background:
+        radial-gradient(940px 500px at -8% -12%, var(--gc-page-tint-a), transparent 58%),
+        radial-gradient(1040px 560px at 114% 112%, var(--gc-page-tint-b), transparent 64%),
+        linear-gradient(180deg, color-mix(in srgb, var(--vscode-editor-background) 94%, #0b1420), var(--vscode-editor-background));
+    }
+
+    .card {
+      border-radius: var(--gc-radius-xl);
+      border: 1px solid var(--gc-panel-border);
+      background: linear-gradient(180deg, var(--gc-panel-bg-strong), var(--gc-panel-bg));
+      box-shadow: var(--gc-shadow-soft);
+      backdrop-filter: blur(12px);
+    }
+
+    .stage {
+      gap: 12px;
+    }
+
+    .floating-panel,
+    .info-drawer {
+      border-radius: var(--gc-radius-lg);
+      border: 1px solid var(--gc-panel-border);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--gc-panel-bg-strong) 95%, transparent), color-mix(in srgb, var(--gc-panel-bg) 96%, transparent));
+      box-shadow: var(--gc-shadow-panel);
+    }
+
+    .floating-panel {
+      padding: 14px;
+    }
+
+    .panel-title,
+    .control-title {
+      color: var(--gc-text-soft-2);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+    }
+
+    .panel-field label,
+    .field label,
+    .hint,
+    .curve-summary,
+    .next-group-status,
+    .viewer-head {
+      color: var(--gc-text-soft-2);
+    }
+
+    .panel-field select,
+    .field select,
+    .solvent-select {
+      background: color-mix(in srgb, var(--gc-panel-bg-muted) 92%, transparent);
+      border: 1px solid var(--gc-panel-border);
+      color: var(--gc-text-main);
+    }
+
+    .panel-field select:focus,
+    .field select:focus,
+    .solvent-select:focus {
+      outline: none;
+      border-color: var(--gc-panel-border-strong);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--gc-accent-soft) 72%, transparent);
+    }
+
+    .panel-btn,
+    .action-row button,
+    .tab-btn,
+    .curve-type-btn {
+      border-radius: var(--gc-radius-sm);
+    }
+
+    .panel-btn,
+    .action-row button {
+      border: 1px solid var(--gc-chip-border);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--gc-accent-soft) 84%, transparent), color-mix(in srgb, var(--gc-panel-bg-muted) 94%, transparent));
+      color: var(--gc-text-main);
+      font-weight: 600;
+    }
+
+    .panel-btn:hover,
+    .action-row button:hover {
+      filter: none;
+      transform: translateY(-1px);
+      border-color: var(--gc-panel-border-strong);
+      box-shadow: 0 10px 24px color-mix(in srgb, var(--gc-accent-soft) 24%, transparent);
+    }
+
+    .preview-btn.active,
+    .tab-btn.active,
+    .curve-type-btn.active {
+      background: linear-gradient(180deg, color-mix(in srgb, var(--gc-accent-soft) 90%, transparent), color-mix(in srgb, var(--gc-accent-soft) 76%, transparent));
+      border-color: var(--gc-panel-border-strong);
+      color: var(--gc-text-main);
+    }
+
+    .viewer-stage {
+      border-radius: var(--gc-radius-lg);
+      border: 1px solid var(--gc-panel-border);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--gc-viewer-bg) 96%, transparent), color-mix(in srgb, var(--gc-panel-bg) 98%, transparent));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .viewer-wrap {
+      background: var(--gc-viewer-bg);
+    }
+
+    .control-section {
+      border-radius: var(--gc-radius-md);
+      border: 1px solid var(--gc-panel-border);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--gc-panel-bg-muted) 94%, transparent), color-mix(in srgb, var(--gc-panel-bg) 98%, transparent));
+    }
+
+    .info-drawer-tabs {
+      padding: 10px;
+      border-bottom: 1px solid var(--gc-panel-border);
+    }
+
+    .info-drawer-panels {
+      padding: 10px;
+    }
+
+    .kv-table td {
+      border-bottom: 1px solid color-mix(in srgb, var(--gc-panel-border) 72%, transparent);
+      color: var(--gc-text-main);
+    }
+
+    .kv-table td:first-child {
+      color: var(--gc-text-soft-2);
+    }
+
+    #measurementInfo {
+      background: var(--gc-measure-bg) !important;
+      border: 1px solid var(--gc-measure-border) !important;
+      border-radius: 10px !important;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+      backdrop-filter: blur(10px);
+      color: var(--gc-text-main);
+    }
+
+    @media (max-width: 760px) {
+      .toolbar-brand {
+        order: -1;
+        width: 100%;
+        margin-left: 0;
+        margin-right: 0;
+        font-size: 12px;
+        text-align: left;
+      }
+    }
   </style>
 </head>
 <body>
@@ -1425,26 +1669,28 @@ export function showLogPanel(
     <!-- 简化工具栏：只有主要按钮 -->
     <div class="toolbar">
       <button id="styleBtn" class="toolbar-btn" title="渲染样式与参数">
-        <span class="toolbar-btn-icon">⚙</span>
-        <span class="toolbar-btn-label">样式</span>
+        <span class="toolbar-btn-icon">3D</span>
+        <span class="toolbar-btn-label">渲染</span>
       </button>
 
       <button id="frameBtn" class="toolbar-btn" title="结构轨迹与循环">
-        <span class="toolbar-btn-icon">⏯</span>
+        <span class="toolbar-btn-icon">TS</span>
         <span class="toolbar-btn-label">轨迹</span>
       </button>
 
       <button id="vibrationBtn" class="toolbar-btn" title="振动模式与参数">
-        <span class="toolbar-btn-icon">≈</span>
+        <span class="toolbar-btn-icon">V</span>
         <span class="toolbar-btn-label">振动</span>
       </button>
 
       <div class="toolbar-sep"></div>
 
       <button id="infoToggleBtn" class="toolbar-btn" title="显示/隐藏右侧信息">
-        <span class="toolbar-btn-icon">ⓘ</span>
+        <span class="toolbar-btn-icon">IN</span>
         <span class="toolbar-btn-label">信息</span>
       </button>
+
+      <div id="toolbarStatus" class="toolbar-status"></div>
 
       <div class="toolbar-spacer"></div>
       <div class="toolbar-brand">Gaussian Copilot</div>
@@ -1696,6 +1942,7 @@ export function showLogPanel(
     const stickRadiusLabel = document.getElementById('stickRadiusLabel');
     const sphereScaleLabel = document.getElementById('sphereScaleLabel');
     const measurementInfo = document.getElementById('measurementInfo');
+    const toolbarStatus = document.getElementById('toolbarStatus');
     const normalizedCalculationType = String(data.overview?.calculationType || '').toUpperCase();
     const ircFrameOrder = normalizedCalculationType === 'IRC'
       ? data.curves
@@ -2205,6 +2452,23 @@ export function showLogPanel(
       return unit ? String(value) + ' ' + unit : String(value);
     }
 
+    function renderToolbarStatus() {
+      if (!toolbarStatus) {
+        return;
+      }
+
+      const status = data.terminationStatus || (data.normalTermination ? 'normal' : 'running');
+      const label = status === 'normal'
+        ? 'Normal termination'
+        : status === 'error'
+          ? (data.terminationReason || 'Error termination')
+          : 'Running';
+      toolbarStatus.textContent = label;
+      toolbarStatus.classList.toggle('ok', status === 'normal');
+      toolbarStatus.classList.toggle('running', status === 'running');
+      toolbarStatus.classList.toggle('warn', status === 'error');
+    }
+
     function tableRow(label, value, unit) {
       return '<tr><td>' + label + '</td><td>' + formatValue(value, unit) + '</td></tr>';
     }
@@ -2226,7 +2490,14 @@ export function showLogPanel(
         tableRow('Polarizability', o.polarizability, 'Bohr^3'),
         tableRow('Point Group', o.pointGroup),
         tableRow('Job cpu time', o.jobCpuTime),
-        tableRow('Termination', data.normalTermination ? 'Normal termination' : 'Not normal termination')
+        tableRow(
+          'Termination',
+          data.terminationStatus === 'normal'
+            ? 'Normal termination'
+            : data.terminationStatus === 'error'
+              ? (data.terminationReason || 'Error termination')
+              : 'Running',
+        )
       ].join('');
     }
 
@@ -2489,6 +2760,7 @@ export function showLogPanel(
 
     renderOverview();
     renderThermo();
+    renderToolbarStatus();
 
     // 右侧面板默认隐藏，但Overview标签默认active（展开时直接看到PES）
     tabOverview.classList.add('active');
@@ -2618,9 +2890,11 @@ export function showLogPanel(
     const muted = (style.getPropertyValue('--vscode-descriptionForeground') || '#9ca3af').trim();
     const border = (style.getPropertyValue('--vscode-panel-border') || '#4b5563').trim();
     const tooltipBg = (style.getPropertyValue('--vscode-editorWidget-background') || '#111827').trim();
+    const accentStrong = (style.getPropertyValue('--gc-accent-strong') || '#1d8fa3').trim();
+    const accentMarker = (style.getPropertyValue('--gc-danger') || '#f07f59').trim();
     const curveTypeLabelMap = { opt: 'opt', scan: 'scan', irc: 'irc' };
     const curveTitleMap = { opt: '', scan: '', irc: '' };
-    const sharedCurveColor = '#58c7b2';
+    const sharedCurveColor = accentStrong;
     const curveColorMap = { opt: sharedCurveColor, scan: sharedCurveColor, irc: sharedCurveColor };
     const preferredCurveTypes = normalizedCalculationType === 'IRC'
       ? ['irc']
@@ -2759,7 +3033,7 @@ export function showLogPanel(
           z: 5,
           itemStyle: {
             color: 'rgba(0, 0, 0, 0)',
-            borderColor: '#f07f59',
+            borderColor: accentMarker,
             borderWidth: 2,
           },
           tooltip: { show: false },
