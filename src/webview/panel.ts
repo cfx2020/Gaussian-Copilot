@@ -923,6 +923,27 @@ export function showLogPanel(
       gap: 6px;
       margin-bottom: 10px;
     }
+    .style-panel-grid {
+      display: grid;
+      grid-template-columns: 118px minmax(0, 1fr);
+      column-gap: 8px;
+      row-gap: 14px;
+      align-items: start;
+    }
+    .style-panel-grid .panel-field {
+      min-width: 0;
+      margin-bottom: 0;
+    }
+    .style-panel-grid .panel-field select {
+      width: 118px;
+      max-width: 118px;
+    }
+    .style-panel-grid .panel-field input[type='color'] {
+      width: 68px;
+    }
+    .style-panel-grid .panel-field:last-child {
+      margin-bottom: 0;
+    }
     .panel-field label {
       font-size: 11px;
       color: var(--gc-text-soft);
@@ -935,53 +956,110 @@ export function showLogPanel(
       font-size: 11px;
     }
     .panel-field select {
-      height: 28px;
-      padding: 4px 20px 4px 8px;
+      height: 34px;
+      padding: 6px 34px 6px 12px;
       appearance: none;
       -webkit-appearance: none;
       -moz-appearance: none;
-      background: color-mix(in srgb, var(--vscode-dropdown-background) 74%, #153245);
-      color: var(--vscode-dropdown-foreground);
-      border: 1px solid color-mix(in srgb, var(--vscode-dropdown-border, var(--gc-border)) 70%, transparent);
-      border-radius: 6px;
+      background:
+        linear-gradient(180deg, var(--gc-control-bg-strong), var(--gc-control-bg)),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%237fa4b1' d='M2.2 4.1 6 7.9l3.8-3.8.9.9L6 9.7 1.3 5z'/%3E%3C/svg%3E");
+      color: var(--gc-text-main);
+      border: 1px solid var(--gc-control-border);
+      border-radius: 10px;
+      box-shadow: var(--gc-control-shadow);
       background-image:
-        linear-gradient(45deg, transparent 50%, var(--vscode-foreground) 50%),
-        linear-gradient(135deg, var(--vscode-foreground) 50%, transparent 50%);
-      background-position: calc(100% - 10px) 10px, calc(100% - 6px) 10px;
-      background-size: 4px 4px, 4px 4px;
-      background-repeat: no-repeat;
+        linear-gradient(180deg, var(--gc-control-bg-strong), var(--gc-control-bg)),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%237fa4b1' d='M2.2 4.1 6 7.9l3.8-3.8.9.9L6 9.7 1.3 5z'/%3E%3C/svg%3E");
+      background-position: 0 0, calc(100% - 12px) 50%;
+      background-size: auto, 12px 12px;
+      background-repeat: repeat, no-repeat;
+      transition: border-color 0.14s ease, box-shadow 0.14s ease;
+    }
+    .panel-field select:hover {
+      border-color: var(--gc-control-border-hover);
+    }
+    .panel-field select:focus {
+      outline: none;
+      border-color: var(--gc-control-border-hover);
+      box-shadow: 0 0 0 3px var(--gc-control-ring), var(--gc-control-shadow);
     }
     .panel-field input[type='color'] {
-      height: 32px;
-      border: 1px solid color-mix(in srgb, var(--gc-border) 68%, transparent);
-      border-radius: 6px;
+      height: 40px;
+      padding: 4px;
+      border: 1px solid var(--gc-control-border);
+      border-radius: 12px;
+      background: linear-gradient(180deg, var(--gc-control-bg-strong), var(--gc-control-bg));
+      box-shadow: var(--gc-control-shadow);
       cursor: pointer;
+      transition: border-color 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease;
+    }
+    .panel-field input[type='color']:hover {
+      border-color: var(--gc-control-border-hover);
+    }
+    .panel-field input[type='color']:focus {
+      outline: none;
+      border-color: var(--gc-control-border-hover);
+      box-shadow: 0 0 0 3px var(--gc-control-ring), var(--gc-control-shadow);
     }
     .panel-range-group {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 10px;
     }
     .panel-field input[type='range'] {
       flex: 1;
-      height: 4px;
-      accent-color: var(--gc-accent);
+      height: 24px;
+      background: transparent;
+      appearance: none;
+      -webkit-appearance: none;
     }
     .panel-spinner {
-      font-size: 11px;
+      font-size: 12px;
       color: var(--gc-text-soft);
-      min-width: 36px;
+      min-width: 42px;
       text-align: center;
       white-space: nowrap;
+      font-variant-numeric: tabular-nums;
     }
     #frameLabel {
       min-width: 72px;
     }
     .panel-field input[type='checkbox'] {
-      width: 16px;
-      height: 16px;
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      border: 1px solid var(--gc-control-border);
+      background: linear-gradient(180deg, var(--gc-control-bg-strong), var(--gc-control-bg));
+      box-shadow: var(--gc-control-shadow);
+      appearance: none;
+      -webkit-appearance: none;
+      position: relative;
       cursor: pointer;
-      accent-color: var(--vscode-checkbox-selectBackground);
+      transition: border-color 0.14s ease, box-shadow 0.14s ease, background-color 0.14s ease;
+    }
+    .panel-field input[type='checkbox']:hover {
+      border-color: var(--gc-control-border-hover);
+    }
+    .panel-field input[type='checkbox']:focus {
+      outline: none;
+      border-color: var(--gc-control-border-hover);
+      box-shadow: 0 0 0 3px var(--gc-control-ring), var(--gc-control-shadow);
+    }
+    .panel-field input[type='checkbox']:checked {
+      background: linear-gradient(180deg, color-mix(in srgb, var(--gc-accent-strong) 94%, #6de4d3), color-mix(in srgb, var(--gc-accent-strong) 78%, #21c7a8));
+      border-color: color-mix(in srgb, var(--gc-accent-strong) 72%, white 8%);
+    }
+    .panel-field input[type='checkbox']:checked::after {
+      content: '';
+      position: absolute;
+      left: 6px;
+      top: 2px;
+      width: 4px;
+      height: 8px;
+      border-right: 2px solid rgba(255, 255, 255, 0.96);
+      border-bottom: 2px solid rgba(255, 255, 255, 0.96);
+      transform: rotate(45deg);
     }
     .panel-buttons {
       display: flex;
@@ -1158,41 +1236,102 @@ export function showLogPanel(
       appearance: none;
       -webkit-appearance: none;
       -moz-appearance: none;
-      background: color-mix(in srgb, var(--vscode-dropdown-background) 74%, #153245);
-      color: var(--vscode-dropdown-foreground);
-      border: 1px solid color-mix(in srgb, var(--vscode-dropdown-border, var(--gc-border)) 74%, transparent);
-      border-radius: 6px;
-      height: 26px;
-      padding: 0 26px 0 8px;
+      background:
+        linear-gradient(180deg, var(--gc-control-bg-strong), var(--gc-control-bg)),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%237fa4b1' d='M2.2 4.1 6 7.9l3.8-3.8.9.9L6 9.7 1.3 5z'/%3E%3C/svg%3E");
+      color: var(--gc-text-main);
+      border: 1px solid var(--gc-control-border);
+      border-radius: 10px;
+      height: 32px;
+      padding: 0 34px 0 10px;
       outline: none;
       box-sizing: border-box;
-      background-image:
-        linear-gradient(45deg, transparent 50%, var(--vscode-foreground) 50%),
-        linear-gradient(135deg, var(--vscode-foreground) 50%, transparent 50%);
       background-position:
-        calc(100% - 14px) 10px,
-        calc(100% - 9px) 10px;
-      background-size: 5px 5px, 5px 5px;
-      background-repeat: no-repeat;
+        0 0,
+        calc(100% - 12px) 50%;
+      background-size: auto, 12px 12px;
+      background-repeat: repeat, no-repeat;
+      box-shadow: var(--gc-control-shadow);
+      transition: border-color 0.14s ease, box-shadow 0.14s ease;
+    }
+    .field select:hover {
+      border-color: var(--gc-control-border-hover);
     }
     .field select:focus {
-      border-color: var(--vscode-focusBorder);
+      border-color: var(--gc-control-border-hover);
+      box-shadow: 0 0 0 3px var(--gc-control-ring), var(--gc-control-shadow);
     }
     .field input[type="range"] {
       max-width: 130px;
-      height: 4px;
-      accent-color: var(--gc-accent);
+      height: 24px;
+      background: transparent;
+      appearance: none;
+      -webkit-appearance: none;
     }
     .field input[type="checkbox"] {
-      width: 14px;
-      height: 14px;
-      accent-color: var(--vscode-checkbox-selectBackground);
+      width: 16px;
+      height: 16px;
+      border-radius: 5px;
+      border: 1px solid var(--gc-control-border);
+      background: linear-gradient(180deg, var(--gc-control-bg-strong), var(--gc-control-bg));
+      box-shadow: var(--gc-control-shadow);
+      appearance: none;
+      -webkit-appearance: none;
+      position: relative;
+    }
+    .field input[type="checkbox"]:checked {
+      background: linear-gradient(180deg, color-mix(in srgb, var(--gc-accent-strong) 94%, #6de4d3), color-mix(in srgb, var(--gc-accent-strong) 78%, #21c7a8));
+      border-color: color-mix(in srgb, var(--gc-accent-strong) 72%, white 8%);
+    }
+    .field input[type="checkbox"]:checked::after {
+      content: '';
+      position: absolute;
+      left: 5px;
+      top: 2px;
+      width: 3px;
+      height: 7px;
+      border-right: 2px solid rgba(255, 255, 255, 0.96);
+      border-bottom: 2px solid rgba(255, 255, 255, 0.96);
+      transform: rotate(45deg);
     }
     .field span {
       min-width: 28px;
       text-align: right;
       font-size: 12px;
       color: color-mix(in srgb, var(--vscode-foreground) 92%, #d5fff5);
+    }
+    .panel-field input[type='range']::-webkit-slider-runnable-track,
+    .field input[type='range']::-webkit-slider-runnable-track {
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, color-mix(in srgb, var(--gc-accent-strong) 84%, #4fdccb), color-mix(in srgb, var(--gc-control-border) 76%, rgba(255, 255, 255, 0.12)));
+    }
+    .panel-field input[type='range']::-webkit-slider-thumb,
+    .field input[type='range']::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      margin-top: -5px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--gc-accent-strong) 96%, #8cf4e4), color-mix(in srgb, var(--gc-accent-strong) 78%, #26cdb3));
+      box-shadow: var(--gc-thumb-shadow);
+    }
+    .panel-field input[type='range']::-moz-range-track,
+    .field input[type='range']::-moz-range-track {
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, color-mix(in srgb, var(--gc-accent-strong) 84%, #4fdccb), color-mix(in srgb, var(--gc-control-border) 76%, rgba(255, 255, 255, 0.12)));
+    }
+    .panel-field input[type='range']::-moz-range-thumb,
+    .field input[type='range']::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      border-radius: 999px;
+      background: linear-gradient(180deg, color-mix(in srgb, var(--gc-accent-strong) 96%, #8cf4e4), color-mix(in srgb, var(--gc-accent-strong) 78%, #26cdb3));
+      box-shadow: var(--gc-thumb-shadow);
     }
     .action-row {
       display: flex;
@@ -1451,7 +1590,10 @@ export function showLogPanel(
         min-height: 260px;
       }
       .info-drawer {
-        height: min(52%, 300px);
+        top: var(--gc-stage-pad);
+        bottom: var(--gc-stage-pad);
+        height: auto;
+        min-height: min(360px, calc(100% - (var(--gc-stage-pad) * 2)));
       }
     }
 
@@ -1483,6 +1625,13 @@ export function showLogPanel(
       --gc-viewer-bg: color-mix(in srgb, var(--vscode-editor-background) 95%, #f8fbfd);
       --gc-measure-bg: rgba(255, 255, 255, 0.82);
       --gc-measure-border: rgba(29, 143, 163, 0.18);
+      --gc-control-bg: color-mix(in srgb, var(--vscode-input-background, var(--gc-panel-bg-muted)) 88%, rgba(10, 24, 36, 0.08));
+      --gc-control-bg-strong: color-mix(in srgb, var(--vscode-input-background, var(--gc-panel-bg-muted)) 96%, rgba(255, 255, 255, 0.04));
+      --gc-control-border: color-mix(in srgb, var(--vscode-input-border, var(--gc-panel-border)) 82%, rgba(29, 143, 163, 0.28));
+      --gc-control-border-hover: color-mix(in srgb, var(--gc-accent-strong) 38%, var(--gc-control-border));
+      --gc-control-ring: color-mix(in srgb, var(--gc-accent-strong) 24%, transparent);
+      --gc-control-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 2px rgba(15, 23, 42, 0.08);
+      --gc-thumb-shadow: 0 4px 12px rgba(15, 23, 42, 0.28);
       font-family: var(--gc-font-sans);
       color: var(--gc-text-main);
       background:
@@ -1513,6 +1662,13 @@ export function showLogPanel(
       --gc-viewer-bg: color-mix(in srgb, var(--vscode-editor-background) 92%, #0b1420);
       --gc-measure-bg: rgba(11, 20, 32, 0.78);
       --gc-measure-border: rgba(53, 183, 200, 0.2);
+      --gc-control-bg: color-mix(in srgb, var(--vscode-input-background, #16202d) 90%, rgba(7, 13, 20, 0.45));
+      --gc-control-bg-strong: color-mix(in srgb, var(--vscode-input-background, #16202d) 96%, rgba(255, 255, 255, 0.03));
+      --gc-control-border: color-mix(in srgb, var(--vscode-input-border, var(--gc-panel-border)) 84%, rgba(53, 183, 200, 0.24));
+      --gc-control-border-hover: color-mix(in srgb, var(--gc-accent-strong) 40%, var(--gc-control-border));
+      --gc-control-ring: color-mix(in srgb, var(--gc-accent-strong) 28%, transparent);
+      --gc-control-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 1px 2px rgba(0, 0, 0, 0.24);
+      --gc-thumb-shadow: 0 6px 14px rgba(0, 0, 0, 0.36);
       --gc-shadow-soft: 0 22px 48px rgba(0, 0, 0, 0.34);
       --gc-shadow-panel: 0 24px 52px rgba(0, 0, 0, 0.42);
       background:
@@ -1661,6 +1817,14 @@ export function showLogPanel(
         font-size: 12px;
         text-align: left;
       }
+      .style-panel-grid {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+      .style-panel-grid .panel-field select {
+        width: 100%;
+        max-width: none;
+      }
     }
   </style>
 </head>
@@ -1669,26 +1833,22 @@ export function showLogPanel(
     <!-- 简化工具栏：只有主要按钮 -->
     <div class="toolbar">
       <button id="styleBtn" class="toolbar-btn" title="渲染样式与参数">
-        <span class="toolbar-btn-icon">3D</span>
         <span class="toolbar-btn-label">渲染</span>
       </button>
 
       <button id="frameBtn" class="toolbar-btn" title="结构轨迹与循环">
-        <span class="toolbar-btn-icon">TS</span>
         <span class="toolbar-btn-label">轨迹</span>
       </button>
 
       <button id="vibrationBtn" class="toolbar-btn" title="振动模式与参数">
-        <span class="toolbar-btn-icon">V</span>
         <span class="toolbar-btn-label">振动</span>
       </button>
 
-      <div class="toolbar-sep"></div>
-
       <button id="infoToggleBtn" class="toolbar-btn" title="显示/隐藏右侧信息">
-        <span class="toolbar-btn-icon">IN</span>
         <span class="toolbar-btn-label">信息</span>
       </button>
+
+      <div class="toolbar-sep"></div>
 
       <div id="toolbarStatus" class="toolbar-status"></div>
 
@@ -1699,38 +1859,39 @@ export function showLogPanel(
     <!-- 浮动面板：样式 -->
     <div id="stylePanel" class="floating-panel">
       <div class="panel-title">渲染样式 & 参数</div>
-
-      <div class="panel-field">
-        <label>样式</label>
-        <select id="renderStyle">
-          <option value="ballStick">ball+stick</option>
-          <option value="cpkBallStick">CPK ball+stick</option>
-          <option value="stick">stick</option>
-          <option value="licorice">licorice</option>
-          <option value="sphere">sphere</option>
-          <option value="spacefill">spacefill</option>
-          <option value="line">line</option>
-        </select>
-      </div>
-
-      <div class="panel-field">
-        <label>背景色</label>
-        <input id="bgColor" type="color" value="#ffffff" />
-      </div>
-
-      <div class="panel-field">
-        <label>棒半径</label>
-        <div class="panel-range-group">
-          <input id="stickRadius" type="range" min="0.08" max="0.45" step="0.01" value="0.18" />
-          <span id="stickRadiusLabel" class="panel-spinner">0.18</span>
+      <div class="style-panel-grid">
+        <div class="panel-field">
+          <label>样式</label>
+          <select id="renderStyle">
+            <option value="ballStick">ball+stick</option>
+            <option value="cpkBallStick">CPK ball+stick</option>
+            <option value="stick">stick</option>
+            <option value="licorice">licorice</option>
+            <option value="sphere">sphere</option>
+            <option value="spacefill">spacefill</option>
+            <option value="line">line</option>
+          </select>
         </div>
-      </div>
 
-      <div class="panel-field">
-        <label>球缩放</label>
-        <div class="panel-range-group">
-          <input id="sphereScale" type="range" min="0.1" max="0.7" step="0.01" value="0.25" />
-          <span id="sphereScaleLabel" class="panel-spinner">0.25</span>
+        <div class="panel-field">
+          <label>棒半径</label>
+          <div class="panel-range-group">
+            <input id="stickRadius" type="range" min="0.08" max="0.45" step="0.01" value="0.18" />
+            <span id="stickRadiusLabel" class="panel-spinner">0.18</span>
+          </div>
+        </div>
+
+        <div class="panel-field">
+          <label>背景色</label>
+          <input id="bgColor" type="color" value="#ffffff" />
+        </div>
+
+        <div class="panel-field">
+          <label>球缩放</label>
+          <div class="panel-range-group">
+            <input id="sphereScale" type="range" min="0.1" max="0.7" step="0.01" value="0.25" />
+            <span id="sphereScaleLabel" class="panel-spinner">0.25</span>
+          </div>
         </div>
       </div>
     </div>
@@ -2585,10 +2746,17 @@ export function showLogPanel(
       infoToggleBtn.classList.toggle('active', !infoCollapsed);
     }
 
+    function syncToolbarPanelButtons() {
+      styleBtn.classList.toggle('active', stylePanel.classList.contains('open'));
+      frameBtn.classList.toggle('active', framePanel.classList.contains('open'));
+      vibrationBtn.classList.toggle('active', vibrationPanel.classList.contains('open'));
+    }
+
     function closePanels() {
       stylePanel.classList.remove('open');
       framePanel.classList.remove('open');
       vibrationPanel.classList.remove('open');
+      syncToolbarPanelButtons();
     }
 
     styleBtn.addEventListener('click', () => {
@@ -2598,6 +2766,7 @@ export function showLogPanel(
         closePanels();
         stylePanel.classList.add('open');
       }
+      syncToolbarPanelButtons();
     });
 
     frameBtn.addEventListener('click', () => {
@@ -2607,6 +2776,7 @@ export function showLogPanel(
         closePanels();
         framePanel.classList.add('open');
       }
+      syncToolbarPanelButtons();
     });
 
     vibrationBtn.addEventListener('click', () => {
@@ -2616,6 +2786,7 @@ export function showLogPanel(
         closePanels();
         vibrationPanel.classList.add('open');
       }
+      syncToolbarPanelButtons();
     });
 
     infoToggleBtn.addEventListener('click', () => {
@@ -3258,6 +3429,7 @@ export function showLogPanel(
     syncStageMetrics();
     updateLayoutToggleUi();
     closePanels();
+    syncToolbarPanelButtons();
     requestRenderFrame(initialFrameIndex);
     scheduleViewportRefresh(0);
     scheduleViewportRefresh(120);
