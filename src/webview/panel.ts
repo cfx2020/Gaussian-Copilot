@@ -81,7 +81,7 @@ function normalizeSolventKeyword(solvent: string): string {
   return trimmed;
 }
 
-function buildRoute(route: string, kind: 'ts' | 'sol' | 'irc', solvent?: string): string {
+function buildRoute(route: string, kind: 'ts' | 'sol' | 'sol-current' | 'irc', solvent?: string): string {
   const { prefix, body } = ensureRoutePrefix(route || '#p');
   if (kind === 'ts') {
     const kept = removeRouteKeywords(body, ['opt', 'guess', 'geom']);
@@ -89,10 +89,12 @@ function buildRoute(route: string, kind: 'ts' | 'sol' | 'irc', solvent?: string)
     return `${prefix} ${combined}`.trim();
   }
 
-  if (kind === 'sol') {
+  if (kind === 'sol' || kind === 'sol-current') {
     const kept = removeRouteKeywords(body, ['opt', 'freq', 'irc', 'scrf', 'guess', 'geom']);
     const sol = solvent && solvent.trim() ? normalizeSolventKeyword(solvent) : 'water';
-    const combined = normalizeSpaces(`${kept} scrf=(smd,solvent=${sol}) guess=read geom=check`);
+    const combined = kind === 'sol'
+      ? normalizeSpaces(`${kept} scrf=(smd,solvent=${sol}) guess=read geom=check`)
+      : normalizeSpaces(`${kept} scrf=(smd,solvent=${sol})`);
     return `${prefix} ${combined}`.trim();
   }
 
@@ -394,17 +396,17 @@ function resolveTsIntermediateCapability(summary: GaussianSummary): TsIntermedia
 async function buildNextInputPlan(
   logPath: string,
   summary: GaussianSummary,
-  kind: 'ts' | 'ts-read' | 'sol' | 'irc',
+  kind: 'ts' | 'ts-read' | 'sol' | 'sol-current' | 'irc',
   frameIndex: number,
   solvent?: string,
 ): Promise<NextInputPlan> {
   const template = await loadTemplateFromCompanionGjf(logPath) ?? defaultTemplateFromSummary(logPath, summary);
   const parsed = path.parse(logPath);
   let outputPath: string;
-  if (kind === 'sol') {
+  if (kind === 'sol' || kind === 'sol-current') {
     const smdDir = path.join(parsed.dir, 'smd');
     await fs.mkdir(smdDir, { recursive: true });
-    outputPath = path.join(smdDir, `${parsed.name}_sol.gjf`);
+    outputPath = path.join(smdDir, kind === 'sol' ? `${parsed.name}_sol.gjf` : `${parsed.name}_sol-current.gjf`);
   } else if (kind === 'irc') {
     outputPath = path.join(parsed.dir, `${parsed.name}-irc.gjf`);
   } else {
@@ -426,7 +428,7 @@ async function buildNextInputPlan(
     route = buildRoute(template.route, kind, solvent);
   }
 
-  if (kind === 'sol') {
+  if (kind === 'sol' || kind === 'sol-current') {
     const shouldUpgradeBasis = !routeHasGenLikeBasis(route) && !hasMetalAtoms(summary);
     if (shouldUpgradeBasis) {
       route = upgradeRouteBasisForSolvent(route);
@@ -435,7 +437,7 @@ async function buildNextInputPlan(
 
   const frame = summary.frames[Math.max(0, Math.min(summary.frames.length - 1, frameIndex))];
   const coordinates = frame ? atomsToGaussianCoordinates(frame.atoms) : '';
-  const basisTail = kind === 'sol'
+  const basisTail = (kind === 'sol' || kind === 'sol-current')
     ? (routeHasGenLikeBasis(route) ? upgradeBasisTextForSolvent(template.basisTail) : template.basisTail)
     : template.basisTail;
 
@@ -446,7 +448,7 @@ async function buildNextInputPlan(
   lines.push(template.title);
   lines.push('');
   lines.push(template.chargeMultiplicity);
-  if (kind === 'ts') {
+  if (kind === 'ts' || kind === 'sol-current') {
     lines.push(coordinates);
   }
   lines.push('');
@@ -562,6 +564,8 @@ export function showLogPanel(
   summary: GaussianSummary,
   viewerOptions: ViewerRenderOptions,
 ): void {
+  const savedSolventSelection = context.globalState.get<string>('gaussianCopilot.nextSolventSelection', 'water');
+  const savedCustomSolvent = context.globalState.get<string>('gaussianCopilot.nextCustomSolvent', '');
   const panel = vscode.window.createWebviewPanel(
     'gaussianLogViewer',
     `Gaussian 可视化: ${title}`,
@@ -599,17 +603,31 @@ export function showLogPanel(
     nextCapabilities: {
       tsIntermediates: tsIntermediateCapability,
     },
+    nextDefaults: {
+      solventSelection: savedSolventSelection,
+      customSolvent: savedCustomSolvent,
+    },
   });
 
   panel.webview.onDidReceiveMessage(async (message: unknown) => {
     const req = message as {
       type?: string;
-      kind?: 'ts' | 'ts-read' | 'sol' | 'irc';
+      kind?: 'ts' | 'ts-read' | 'sol' | 'sol-current' | 'irc';
       frameIndex?: number;
       solvent?: string;
+      solventSelection?: string;
       currentValue?: string;
+      fallbackValue?: string;
       step?: number;
     };
+
+    if (req?.type === 'saveSolventPreference') {
+      const solventSelection = String(req.solventSelection || 'water').trim() || 'water';
+      const customSolvent = String(req.solvent || '').trim();
+      await context.globalState.update('gaussianCopilot.nextSolventSelection', solventSelection);
+      await context.globalState.update('gaussianCopilot.nextCustomSolvent', customSolvent);
+      return;
+    }
 
     if (req?.type === 'requestCustomSolvent') {
       const picked = await vscode.window.showInputBox({
@@ -619,9 +637,21 @@ export function showLogPanel(
         value: req.currentValue?.trim() || '',
       });
 
+      if (picked === undefined) {
+        panel.webview.postMessage({
+          type: 'cancelCustomSolvent',
+          fallbackValue: req.fallbackValue?.trim() || 'water',
+        });
+        return;
+      }
+
+      const trimmedPicked = picked.trim();
+      await context.globalState.update('gaussianCopilot.nextSolventSelection', trimmedPicked ? '__custom__' : 'water');
+      await context.globalState.update('gaussianCopilot.nextCustomSolvent', trimmedPicked);
+
       panel.webview.postMessage({
         type: 'setCustomSolvent',
-        value: picked?.trim() || '',
+        value: trimmedPicked,
       });
       return;
     }
@@ -675,10 +705,11 @@ export function showLogPanel(
 
       const skipPreview = context.workspaceState.get<boolean>('chemAssist.nextPreviewDisabled', false);
       if (req.type === 'previewNextInput' && !skipPreview) {
-        const kindLabelMap: Record<'ts' | 'ts-read' | 'sol' | 'irc', string> = {
+        const kindLabelMap: Record<'ts' | 'ts-read' | 'sol' | 'sol-current' | 'irc', string> = {
           ts: 'TS（当前帧坐标）',
           'ts-read': 'TS（readfc）',
-          sol: 'Sol（SMD）',
+          sol: 'Sol（read方法）',
+          'sol-current': 'Sol（当前帧坐标）',
           irc: 'IRC',
         };
         const detail = [
@@ -1382,6 +1413,40 @@ export function showLogPanel(
       color: color-mix(in srgb, var(--vscode-foreground) 94%, #d7fff6);
       margin-bottom: 4px;
     }
+    .next-action-blocks {
+      display: grid;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .next-action-block {
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid color-mix(in srgb, var(--gc-border) 72%, transparent);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--gc-panel-bg-muted) 92%, transparent), color-mix(in srgb, var(--gc-panel-bg) 96%, transparent));
+      box-shadow: inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+    }
+    .next-action-block-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--gc-text-soft);
+      margin-bottom: 6px;
+    }
+    .next-action-block .action-row:first-of-type {
+      margin-top: 0;
+    }
+    .next-action-subsection {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid color-mix(in srgb, var(--gc-border) 56%, transparent);
+    }
+    .next-action-subtitle {
+      font-size: 11px;
+      font-weight: 700;
+      color: color-mix(in srgb, var(--vscode-foreground) 92%, #d7fff6);
+      margin-bottom: 6px;
+    }
     .next-group-status {
       margin-top: 4px;
       font-size: 11px;
@@ -2038,58 +2103,70 @@ export function showLogPanel(
             <div id="tabNext" class="tab-panel">
               <div class="next-group">
                 <div class="next-group-title">常规后续任务</div>
-                <div class="action-row" style="margin-top:0;">
-                  <button id="nextTsBtn">从当前帧进行TS过渡态搜索</button>
+                <div class="next-action-blocks">
+                  <div class="next-action-block">
+                    <div class="next-action-block-title">TS 过渡态搜索</div>
+                    <div class="action-row">
+                      <button id="nextTsBtn">从当前帧进行TS过渡态搜索</button>
+                      <button id="nextTsReadBtn">从当前帧进行TS过渡态搜索（read方法/更快）</button>
+                    </div>
+                    <div id="tsIntermediateGroup" class="next-action-subsection">
+                      <div class="next-action-subtitle">TS 前后中间体</div>
+                      <div class="hint">基于最终 TS 几何和唯一虚频模式预览正反向位移，并一次生成两个 OPT+FREQ 输入。</div>
+                      <div class="field step-field">
+                        <label for="tsIntermediateStep">位移步长</label>
+                        <input id="tsIntermediateStep" type="range" min="0.05" max="1.00" step="0.05" value="0.30" />
+                        <span id="tsIntermediateStepLabel">0.30</span>
+                      </div>
+                      <div class="action-row">
+                        <button id="tsIntermediateBaseBtn" class="preview-btn">TS 原结构</button>
+                        <button id="tsIntermediateForwardBtn" class="preview-btn">前向位移</button>
+                        <button id="tsIntermediateReverseBtn" class="preview-btn">后向位移</button>
+                      </div>
+                      <div class="action-row">
+                        <button id="tsIntermediateGenerateBtn">生成前后中间体（OPT+FREQ）</button>
+                      </div>
+                      <div id="tsIntermediateStatus" class="next-group-status"></div>
+                    </div>
+                  </div>
+                  <div class="next-action-block">
+                    <div class="next-action-block-title">Sol 溶剂化</div>
+                    <div class="action-row">
+                      <select id="nextSolvent" class="solvent-select">
+                        <option value="water">Water</option>
+                        <option value="DMSO">DMSO</option>
+                        <option value="nitro-methane">Nitro-methane</option>
+                        <option value="acetonitrile">Acetonitrile</option>
+                        <option value="methanol">Methanol</option>
+                        <option value="ethanol">Ethanol</option>
+                        <option value="acetone">Acetone</option>
+                        <option value="dichloromethane">Dichloromethane</option>
+                        <option value="dichloroethane">Dichloroethane</option>
+                        <option value="THF">THF</option>
+                        <option value="aniline">Aniline</option>
+                        <option value="chlorobenzene">Chlorobenzene</option>
+                        <option value="chloroform">Chloroform</option>
+                        <option value="diethyl ether">Diethyl ether</option>
+                        <option value="toluene">Toluene</option>
+                        <option value="benzene">Benzene</option>
+                        <option value="CCl4">CCl4</option>
+                        <option value="cyclohexane">Cyclohexane</option>
+                        <option value="heptane">Heptane</option>
+                        <option value="__custom__">自定义...</option>
+                      </select>
+                    </div>
+                    <div class="action-row">
+                      <button id="nextSolCurrentBtn">从当前帧进行Sol溶剂化</button>
+                      <button id="nextSolBtn">进行Sol溶剂化（read方法）</button>
+                    </div>
+                  </div>
+                  <div class="next-action-block">
+                    <div class="next-action-block-title">IRC 路径验证</div>
+                    <div class="action-row">
+                      <button id="nextIrcBtn">进行IRC路径验证</button>
+                    </div>
+                  </div>
                 </div>
-                <div class="action-row">
-                  <button id="nextTsReadBtn">从当前帧进行TS过渡态搜索（read方法/更快）</button>
-                </div>
-                <div class="action-row">
-                  <select id="nextSolvent" class="solvent-select">
-                    <option value="water">Water</option>
-                    <option value="DMSO">DMSO</option>
-                    <option value="nitro-methane">Nitro-methane</option>
-                    <option value="acetonitrile">Acetonitrile</option>
-                    <option value="methanol">Methanol</option>
-                    <option value="ethanol">Ethanol</option>
-                    <option value="acetone">Acetone</option>
-                    <option value="dichloromethane">Dichloromethane</option>
-                    <option value="dichloroethane">Dichloroethane</option>
-                    <option value="THF">THF</option>
-                    <option value="aniline">Aniline</option>
-                    <option value="chlorobenzene">Chlorobenzene</option>
-                    <option value="chloroform">Chloroform</option>
-                    <option value="diethyl ether">Diethyl ether</option>
-                    <option value="toluene">Toluene</option>
-                    <option value="benzene">Benzene</option>
-                    <option value="CCl4">CCl4</option>
-                    <option value="cyclohexane">Cyclohexane</option>
-                    <option value="heptane">Heptane</option>
-                    <option value="__custom__">自定义...</option>
-                  </select>
-                  <button id="nextSolBtn">进行Sol溶剂化</button>
-                </div>
-                <div class="action-row">
-                  <button id="nextIrcBtn">进行IRC路径验证</button>
-                </div>
-              </div>
-              <div id="tsIntermediateGroup" class="next-group">
-                <div class="next-group-title">TS 前后中间体</div>
-                <div class="hint">基于最终 TS 几何和唯一虚频模式预览正反向位移，并一次生成两个 OPT+FREQ 输入。</div>
-                <div class="field step-field">
-                  <label for="tsIntermediateStep">位移步长</label>
-                  <input id="tsIntermediateStep" type="range" min="0.05" max="1.00" step="0.05" value="0.30" />
-                  <span id="tsIntermediateStepLabel">0.30</span>
-                </div>
-                <div class="action-row">
-                  <button id="tsIntermediateBaseBtn" class="preview-btn">TS 原结构</button>
-                  <button id="tsIntermediateForwardBtn" class="preview-btn">前向位移</button>
-                  <button id="tsIntermediateReverseBtn" class="preview-btn">后向位移</button>
-                </div>
-                <div class="action-row">
-                  <button id="tsIntermediateGenerateBtn">生成前后中间体（OPT+FREQ）</button>
-                </div>
-                <div id="tsIntermediateStatus" class="next-group-status"></div>
               </div>
             </div>
           </div>
@@ -2148,6 +2225,7 @@ export function showLogPanel(
     const curveSummary = document.getElementById('curveSummary');
     const nextTsBtn = document.getElementById('nextTsBtn');
     const nextTsReadBtn = document.getElementById('nextTsReadBtn');
+    const nextSolCurrentBtn = document.getElementById('nextSolCurrentBtn');
     const nextSolBtn = document.getElementById('nextSolBtn');
     const nextIrcBtn = document.getElementById('nextIrcBtn');
     const nextSolvent = document.getElementById('nextSolvent');
@@ -2215,7 +2293,8 @@ export function showLogPanel(
     let pendingFrameIndex = 0;
     let currentFrameIndex = frameOrder[initialFrameIndex] ?? initialFrameIndex;
     let currentDisplayFrameIndex = initialFrameIndex;
-    let customSolvent = '';
+    let customSolvent = String(data.nextDefaults?.customSolvent || '').trim();
+    let lastSelectedSolvent = 'water';
     let resizeTimer = null;
     let lastRenderedXyz = '';
     let currentModel = null;
@@ -2692,6 +2771,42 @@ export function showLogPanel(
       toolbarStatus.classList.toggle('warn', status === 'error');
     }
 
+    function syncCustomSolventOptionLabel() {
+      const customOption = nextSolvent.querySelector('option[value="__custom__"]');
+      if (!customOption) {
+        return;
+      }
+      customOption.textContent = customSolvent ? ('自定义: ' + customSolvent) : '自定义...';
+    }
+
+    function syncSavedSolventSelection() {
+      const selected = String(nextSolvent.value || 'water').trim() || 'water';
+      const solvent = selected === '__custom__' ? customSolvent : '';
+      vscodeApi.postMessage({
+        type: 'saveSolventPreference',
+        solventSelection: selected,
+        solvent,
+      });
+    }
+
+    function applySavedSolventSelection() {
+      syncCustomSolventOptionLabel();
+      const savedSelection = String(data.nextDefaults?.solventSelection || 'water').trim() || 'water';
+      const hasSavedOption = Boolean(nextSolvent.querySelector('option[value="' + savedSelection.replace(/"/g, '\\"') + '"]'));
+      if (savedSelection === '__custom__' && customSolvent) {
+        nextSolvent.value = '__custom__';
+        lastSelectedSolvent = '__custom__';
+        return;
+      }
+      if (hasSavedOption && savedSelection !== '__custom__') {
+        nextSolvent.value = savedSelection;
+        lastSelectedSolvent = savedSelection;
+        return;
+      }
+      nextSolvent.value = 'water';
+      lastSelectedSolvent = 'water';
+    }
+
     function tableRow(label, value, unit) {
       return '<tr><td>' + label + '</td><td>' + formatValue(value, unit) + '</td></tr>';
     }
@@ -2994,6 +3109,7 @@ export function showLogPanel(
     renderOverview();
     renderThermo();
     renderToolbarStatus();
+    applySavedSolventSelection();
 
     // 右侧面板默认隐藏，但Overview标签默认active（展开时直接看到PES）
     tabOverview.classList.add('active');
@@ -3023,33 +3139,55 @@ export function showLogPanel(
     });
 
     nextSolvent.addEventListener('change', () => {
-      if (String(nextSolvent.value || '') !== '__custom__') {
+      const selected = String(nextSolvent.value || '').trim() || 'water';
+      if (selected !== '__custom__') {
+        lastSelectedSolvent = selected;
+        syncSavedSolventSelection();
         return;
       }
       vscodeApi.postMessage({
         type: 'requestCustomSolvent',
         currentValue: customSolvent,
+        fallbackValue: lastSelectedSolvent,
       });
     });
 
     window.addEventListener('message', (event) => {
       const msg = event.data || {};
+      if (msg.type === 'cancelCustomSolvent') {
+        nextSolvent.value = String(msg.fallbackValue || 'water').trim() || 'water';
+        return;
+      }
       if (msg.type !== 'setCustomSolvent') {
         return;
       }
 
       const trimmed = String(msg.value || '').trim();
       if (!trimmed) {
+        customSolvent = '';
+        syncCustomSolventOptionLabel();
         nextSolvent.value = 'water';
+        lastSelectedSolvent = 'water';
+        syncSavedSolventSelection();
         return;
       }
 
       customSolvent = trimmed;
-      const customOption = nextSolvent.querySelector('option[value="__custom__"]');
-      if (customOption) {
-        customOption.textContent = '自定义: ' + customSolvent;
-      }
+      syncCustomSolventOptionLabel();
       nextSolvent.value = '__custom__';
+      lastSelectedSolvent = '__custom__';
+      syncSavedSolventSelection();
+    });
+
+    nextSolCurrentBtn.addEventListener('click', () => {
+      const selected = String(nextSolvent.value || 'water').trim() || 'water';
+      const solvent = selected === '__custom__' ? (customSolvent || 'water') : selected;
+      vscodeApi.postMessage({
+        type: 'previewNextInput',
+        kind: 'sol-current',
+        frameIndex: getActualFrameIndex(Number(frameSlider.value) || 0),
+        solvent,
+      });
     });
 
     nextSolBtn.addEventListener('click', () => {
