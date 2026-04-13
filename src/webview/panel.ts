@@ -804,24 +804,28 @@ export function showLogPanel(
       min-width: 0;
       padding: 0 14px;
       border-radius: 10px;
-      border: 1px solid transparent;
-      background: color-mix(in srgb, var(--gc-panel-bg-muted) 82%, transparent);
+      border: 1px solid color-mix(in srgb, var(--gc-panel-border) 94%, rgba(255, 255, 255, 0.04));
+      background: linear-gradient(180deg, rgba(26, 35, 49, 0.88), rgba(22, 30, 42, 0.84));
       color: var(--gc-text-main);
       font-weight: 600;
       letter-spacing: 0.01em;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.04),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.18);
       cursor: pointer;
       transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
     }
     .toolbar-btn:hover {
-      background: color-mix(in srgb, var(--gc-panel-bg-muted) 90%, var(--gc-accent-soft));
-      border-color: var(--gc-chip-border);
+      background: linear-gradient(180deg, rgba(32, 44, 60, 0.92), rgba(24, 35, 48, 0.88));
+      border-color: color-mix(in srgb, var(--gc-panel-border-strong) 78%, rgba(255, 255, 255, 0.08));
     }
     .toolbar-btn.active {
       background: linear-gradient(180deg, color-mix(in srgb, var(--gc-accent-soft) 92%, transparent), color-mix(in srgb, var(--gc-accent-soft) 78%, transparent));
-      border-color: var(--gc-panel-border-strong);
+      border-color: color-mix(in srgb, var(--gc-panel-border-strong) 92%, rgba(255, 255, 255, 0.12));
       color: var(--gc-text-main);
-      box-shadow: 0 0 0 1px var(--gc-chip-border);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        0 0 0 1px color-mix(in srgb, var(--gc-chip-border) 88%, transparent);
     }
     .toolbar-btn-icon {
       display: inline-flex;
@@ -1698,6 +1702,20 @@ export function showLogPanel(
     }
 
     .floating-panel {
+      border-color: color-mix(in srgb, var(--gc-border) 86%, transparent);
+      background: linear-gradient(170deg, rgba(10, 28, 38, 0.92), rgba(13, 32, 46, 0.88));
+      box-shadow: var(--gc-shadow-panel);
+      backdrop-filter: blur(8px);
+    }
+
+    .info-drawer {
+      border-color: color-mix(in srgb, var(--gc-border) 86%, transparent);
+      background: linear-gradient(170deg, rgba(10, 28, 38, 0.92), rgba(13, 32, 46, 0.88));
+      box-shadow: var(--gc-shadow-panel);
+      backdrop-filter: blur(8px);
+    }
+
+    .floating-panel {
       padding: 14px;
     }
 
@@ -1764,6 +1782,39 @@ export function showLogPanel(
       color: var(--gc-text-main);
     }
 
+    .info-drawer .tab-btn {
+      border: 1px solid color-mix(in srgb, var(--gc-border) 82%, transparent);
+      background: transparent;
+      color: inherit;
+    }
+
+    .info-drawer .tab-btn.active,
+    .info-drawer .curve-type-btn.active {
+      background: linear-gradient(160deg, rgba(30, 108, 98, 0.62), rgba(20, 72, 98, 0.58));
+      border-color: color-mix(in srgb, var(--gc-border) 82%, transparent);
+      color: #dffff6;
+      box-shadow: none;
+    }
+
+    .info-drawer .curve-type-btn {
+      border: 1px solid color-mix(in srgb, var(--gc-border) 78%, transparent);
+      background: transparent;
+      color: var(--gc-text-soft);
+    }
+
+    .info-drawer .action-row button {
+      border: 1px solid color-mix(in srgb, var(--gc-border) 82%, transparent);
+      background: linear-gradient(160deg, rgba(35, 96, 93, 0.56), rgba(26, 64, 91, 0.54));
+      color: color-mix(in srgb, var(--vscode-button-foreground, #ffffff) 95%, #d6fff8);
+      box-shadow: none;
+    }
+
+    .info-drawer .action-row button:hover {
+      border-color: color-mix(in srgb, var(--gc-border) 82%, transparent);
+      box-shadow: none;
+      filter: brightness(1.08);
+    }
+
     .viewer-stage {
       border-radius: var(--gc-radius-lg);
       border: 1px solid var(--gc-panel-border);
@@ -1781,9 +1832,20 @@ export function showLogPanel(
       background: linear-gradient(180deg, color-mix(in srgb, var(--gc-panel-bg-muted) 94%, transparent), color-mix(in srgb, var(--gc-panel-bg) 98%, transparent));
     }
 
+    .info-drawer .control-section {
+      border: 1px solid color-mix(in srgb, var(--gc-border) 88%, transparent);
+      background: linear-gradient(160deg, rgba(22, 47, 61, 0.50), rgba(11, 24, 37, 0.40));
+      box-shadow: none;
+    }
+
     .info-drawer-tabs {
       padding: 10px;
       border-bottom: 1px solid var(--gc-panel-border);
+    }
+
+    .info-drawer-tabs {
+      border-bottom-color: color-mix(in srgb, var(--gc-border) 52%, transparent);
+      background: transparent;
     }
 
     .info-drawer-panels {
