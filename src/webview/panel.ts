@@ -189,10 +189,10 @@ function upgradeBasisTextForSolvent(text: string): string {
 
   return text
     .replace(/\blanl2dz\b/ig, 'SDD')
-    .replace(/\b6-31\s*g\s*\(\s*d\s*\)\b/ig, '6-311++G**')
-    .replace(/\b6-31\s*g\s*\(\s*d\s*,\s*p\s*\)\b/ig, '6-311++G**')
-    .replace(/\b6-31\s*\+?\+?g\*\*(?!\*)/ig, '6-311++G**')
-    .replace(/\b6-31\s*g\*(?!\*)/ig, '6-311++G**');
+    .replace(/\b6-31\s*g\s*\(\s*d\s*\)(?=\s|$)/ig, '6-311++G(d,p)')
+    .replace(/\b6-31\s*g\s*\(\s*d\s*,\s*p\s*\)(?=\s|$)/ig, '6-311++G(d,p)')
+    .replace(/\b6-31\s*\+?\+?g\*\*(?!\*)/ig, '6-311++G(d,p)')
+    .replace(/\b6-31\s*g\*(?!\*)/ig, '6-311++G(d,p)');
 }
 
 function upgradeRouteBasisForSolvent(route: string): string {
@@ -202,10 +202,10 @@ function upgradeRouteBasisForSolvent(route: string): string {
 
   const upgraded = route
     .replace(/\/\s*lanl2dz\b/ig, '/SDD')
-    .replace(/\/\s*6-31\s*g\s*\(\s*d\s*\)\b/ig, '/6-311++G**')
-    .replace(/\/\s*6-31\s*g\s*\(\s*d\s*,\s*p\s*\)\b/ig, '/6-311++G**')
-    .replace(/\/\s*6-31\s*\+?\+?g\*\*(?!\*)/ig, '/6-311++G**')
-    .replace(/\/\s*6-31\s*g\*(?!\*)/ig, '/6-311++G**');
+    .replace(/\/\s*6-31\s*g\s*\(\s*d\s*\)(?=\s|$)/ig, '/6-311++G(d,p)')
+    .replace(/\/\s*6-31\s*g\s*\(\s*d\s*,\s*p\s*\)(?=\s|$)/ig, '/6-311++G(d,p)')
+    .replace(/\/\s*6-31\s*\+?\+?g\*\*(?!\*)/ig, '/6-311++G(d,p)')
+    .replace(/\/\s*6-31\s*g\*(?!\*)/ig, '/6-311++G(d,p)');
 
   return upgraded;
 }
