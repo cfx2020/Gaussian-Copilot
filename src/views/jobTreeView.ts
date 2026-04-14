@@ -4,6 +4,7 @@ import { readFile } from 'fs/promises';
 import * as path from 'path';
 import { getSettings } from '../config/settings';
 import { logError, logInfo } from '../logging/diagnostics';
+import { classifyGaussianTermination } from '../parser/termination';
 import { createSubmitter } from '../submission/submitter';
 import { JobState, SubmitMode, SubmitResult } from '../submission/types';
 
@@ -160,26 +161,25 @@ function summarizeBatchStates(jobs: JobRecord[]): string {
   return `运${count('running')} 排${count('queued')} 成${count('completed')} 失${count('failed')} 取${count('cancelled')}`;
 }
 
-function detectFailureReason(content: string): string | undefined {
-  if (/l9999\.exe/i.test(content)) {
-    return 'L9999（SCF/收敛问题）';
+function formatFailureReason(reason: string | undefined): string | undefined {
+  switch (reason) {
+    case 'L9999':
+      return 'L9999（SCF/收敛问题）';
+    case 'L103':
+      return 'L103（几何/初猜问题）';
+    case 'L301':
+      return 'L301（输入/基组或分子规格问题）';
+    case 'L502':
+      return 'L502（SCF不收敛）';
+    case 'Segmentation fault':
+      return 'Segmentation fault';
+    case 'Killed':
+      return '进程被系统终止';
+    case 'Error termination':
+      return 'Gaussian Error termination';
+    default:
+      return reason;
   }
-  if (/l103\.exe/i.test(content)) {
-    return 'L103（几何/初猜问题）';
-  }
-  if (/l502\.exe/i.test(content)) {
-    return 'L502（SCF不收敛）';
-  }
-  if (/segmentation fault/i.test(content)) {
-    return 'Segmentation fault';
-  }
-  if (/killed|signal/i.test(content)) {
-    return '进程被系统终止';
-  }
-  if (/error termination/i.test(content)) {
-    return 'Gaussian Error termination';
-  }
-  return undefined;
 }
 
 class JobTreeItem extends vscode.TreeItem {
@@ -349,13 +349,24 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
       const active = activeJobsById.get(job.id);
       if (active) {
         const nextName = !job.filePath ? normalizeDiscoveredFileName(active.name) : job.fileName;
-        updated.push({ ...job, fileName: nextName, state: active.state, failureReason: undefined });
+        const nextJob = { ...job, fileName: nextName };
+        const terminal = await this.detectTerminalStateFromOutput(nextJob);
+        updated.push(
+          terminal
+            ? { ...nextJob, state: terminal.state, failureReason: terminal.reason }
+            : { ...nextJob, state: active.state, failureReason: undefined },
+        );
         continue;
       }
 
       try {
         const status = await submitter.query(job.id);
-        updated.push({ ...job, state: status.state, failureReason: status.state === 'failed' ? job.failureReason : undefined });
+        const terminal = await this.detectTerminalStateFromOutput(job);
+        updated.push(
+          terminal
+            ? { ...job, state: terminal.state, failureReason: terminal.reason }
+            : { ...job, state: status.state, failureReason: status.state === 'failed' ? job.failureReason : undefined },
+        );
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         logError(`Refresh job ${job.id} failed: ${message}`);
@@ -673,25 +684,40 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
       return { state: 'cancelled' };
     }
 
+    const terminal = await this.detectTerminalStateFromOutput(job);
+    if (terminal) {
+      return terminal;
+    }
+
     const output = await this.findOutputFile(job);
     if (!output) {
       return { state: 'completed' };
     }
 
+    return { state: 'failed', reason: '未检测到 Normal termination' };
+  }
+
+  private async detectTerminalStateFromOutput(job: JobRecord): Promise<{ state: JobState; reason?: string } | undefined> {
+    const output = await this.findOutputFile(job);
+    if (!output) {
+      return undefined;
+    }
+
     try {
       const content = await readFile(output.uri.fsPath, 'utf8');
-      if (/normal termination/i.test(content)) {
+      const termination = classifyGaussianTermination(content);
+      if (termination.status === 'normal') {
         return { state: 'completed' };
       }
-      if (/error termination|l9999\.exe|segmentation fault|killed|terminated/i.test(content)) {
-        return { state: 'failed', reason: detectFailureReason(content) ?? '计算异常结束' };
+      if (termination.status === 'error') {
+        return { state: 'failed', reason: formatFailureReason(termination.reason) ?? '计算异常结束' };
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       logError(`Read output file failed (${output.uri.fsPath}): ${message}`);
     }
 
-    return { state: 'failed', reason: '未检测到 Normal termination' };
+    return undefined;
   }
 
   private configureAutoRefresh(): void {
