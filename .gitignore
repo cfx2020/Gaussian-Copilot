@@ -12,3 +12,6 @@ dist/
 
 # Personal planning notes
 outlook.md
+
+# Local agent artifacts
+.superpowers/
