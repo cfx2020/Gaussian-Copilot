@@ -189,6 +189,8 @@ function upgradeBasisTextForSolvent(text: string): string {
 
   return text
     .replace(/\blanl2dz\b/ig, 'SDD')
+    .replace(/\b6-31\s*g\s*\(\s*d\s*\)\b/ig, '6-311++G**')
+    .replace(/\b6-31\s*g\s*\(\s*d\s*,\s*p\s*\)\b/ig, '6-311++G**')
     .replace(/\b6-31\s*\+?\+?g\*\*(?!\*)/ig, '6-311++G**')
     .replace(/\b6-31\s*g\*(?!\*)/ig, '6-311++G**');
 }
@@ -441,7 +443,7 @@ async function buildNextInputPlan(
   if (kind === 'sol' || kind === 'sol-current') {
     const smdDir = path.join(parsed.dir, 'smd');
     await fs.mkdir(smdDir, { recursive: true });
-    outputPath = path.join(smdDir, kind === 'sol' ? `${parsed.name}_sol.gjf` : `${parsed.name}_sol-current.gjf`);
+    outputPath = path.join(smdDir, `${parsed.name}_sol.gjf`);
   } else if (kind === 'opt-current') {
     outputPath = path.join(parsed.dir, `${parsed.name}1.gjf`);
   } else if (kind === 'irc') {
