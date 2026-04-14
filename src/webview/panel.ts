@@ -81,7 +81,7 @@ function normalizeSolventKeyword(solvent: string): string {
   return trimmed;
 }
 
-function buildRoute(route: string, kind: 'ts' | 'sol' | 'sol-current' | 'irc', solvent?: string): string {
+function buildRoute(route: string, kind: 'ts' | 'sol' | 'sol-current' | 'opt-current' | 'irc', solvent?: string): string {
   const { prefix, body } = ensureRoutePrefix(route || '#p');
   if (kind === 'ts') {
     const kept = removeRouteKeywords(body, ['opt', 'guess', 'geom']);
@@ -115,6 +115,40 @@ function buildIntermediateRoute(route: string): string {
   const kept = removeRouteKeywords(body, ['opt', 'freq', 'irc', 'scrf', 'guess', 'geom']);
   const combined = normalizeSpaces(`${kept} opt freq`);
   return `${prefix} ${combined}`.trim();
+}
+
+function buildContinueOptimizationRoute(
+  templateRoute: string,
+  summary: GaussianSummary,
+  hasCompanionTemplate: boolean,
+): string {
+  if (hasCompanionTemplate) {
+    const { prefix, body } = ensureRoutePrefix(templateRoute || '#p');
+    const kept = removeRouteKeywords(body, ['guess', 'geom']);
+    return `${prefix} ${kept}`.trim();
+  }
+
+  const calculationType = String(summary.overview.calculationType || '').toUpperCase();
+  const imaginaryFreqCount = Number(summary.overview.imaginaryFreqCount);
+  if (calculationType === 'IRC') {
+    return buildRoute(templateRoute, 'irc');
+  }
+  if (calculationType === 'OPT') {
+    const { prefix, body } = ensureRoutePrefix(templateRoute || '#p');
+    const kept = removeRouteKeywords(body, ['opt', 'freq', 'irc', 'scrf', 'guess', 'geom']);
+    return `${prefix} ${normalizeSpaces(`${kept} opt`)}`.trim();
+  }
+  if (calculationType === 'FREQ') {
+    const { prefix, body } = ensureRoutePrefix(templateRoute || '#p');
+    const kept = removeRouteKeywords(body, ['opt', 'freq', 'irc', 'scrf', 'guess', 'geom']);
+    return `${prefix} ${normalizeSpaces(`${kept} freq`)}`.trim();
+  }
+  if (imaginaryFreqCount === 1) {
+    const { prefix, body } = ensureRoutePrefix(templateRoute || '#p');
+    const kept = removeRouteKeywords(body, ['opt', 'guess', 'geom']);
+    return `${prefix} ${normalizeSpaces(`${kept} opt=(calcfc,ts,nofreeze,noeigentest) freq`)}`.trim();
+  }
+  return buildIntermediateRoute(templateRoute);
 }
 
 function routeHasGenLikeBasis(route: string): boolean {
@@ -396,17 +430,20 @@ function resolveTsIntermediateCapability(summary: GaussianSummary): TsIntermedia
 async function buildNextInputPlan(
   logPath: string,
   summary: GaussianSummary,
-  kind: 'ts' | 'ts-read' | 'sol' | 'sol-current' | 'irc',
+  kind: 'ts' | 'ts-read' | 'sol' | 'sol-current' | 'opt-current' | 'irc',
   frameIndex: number,
   solvent?: string,
 ): Promise<NextInputPlan> {
-  const template = await loadTemplateFromCompanionGjf(logPath) ?? defaultTemplateFromSummary(logPath, summary);
+  const companionTemplate = await loadTemplateFromCompanionGjf(logPath);
+  const template = companionTemplate ?? defaultTemplateFromSummary(logPath, summary);
   const parsed = path.parse(logPath);
   let outputPath: string;
   if (kind === 'sol' || kind === 'sol-current') {
     const smdDir = path.join(parsed.dir, 'smd');
     await fs.mkdir(smdDir, { recursive: true });
     outputPath = path.join(smdDir, kind === 'sol' ? `${parsed.name}_sol.gjf` : `${parsed.name}_sol-current.gjf`);
+  } else if (kind === 'opt-current') {
+    outputPath = path.join(parsed.dir, `${parsed.name}1.gjf`);
   } else if (kind === 'irc') {
     outputPath = path.join(parsed.dir, `${parsed.name}-irc.gjf`);
   } else {
@@ -424,6 +461,8 @@ async function buildNextInputPlan(
   let route: string;
   if (kind === 'ts-read') {
     route = buildReadTsRoute(template.route);
+  } else if (kind === 'opt-current') {
+    route = buildContinueOptimizationRoute(template.route, summary, Boolean(companionTemplate));
   } else {
     route = buildRoute(template.route, kind, solvent);
   }
@@ -448,7 +487,7 @@ async function buildNextInputPlan(
   lines.push(template.title);
   lines.push('');
   lines.push(template.chargeMultiplicity);
-  if (kind === 'ts' || kind === 'sol-current') {
+  if (kind === 'ts' || kind === 'sol-current' || kind === 'opt-current') {
     lines.push(coordinates);
   }
   lines.push('');
@@ -612,7 +651,7 @@ export function showLogPanel(
   panel.webview.onDidReceiveMessage(async (message: unknown) => {
     const req = message as {
       type?: string;
-      kind?: 'ts' | 'ts-read' | 'sol' | 'sol-current' | 'irc';
+      kind?: 'ts' | 'ts-read' | 'sol' | 'sol-current' | 'opt-current' | 'irc';
       frameIndex?: number;
       solvent?: string;
       solventSelection?: string;
@@ -705,11 +744,12 @@ export function showLogPanel(
 
       const skipPreview = context.workspaceState.get<boolean>('chemAssist.nextPreviewDisabled', false);
       if (req.type === 'previewNextInput' && !skipPreview) {
-        const kindLabelMap: Record<'ts' | 'ts-read' | 'sol' | 'sol-current' | 'irc', string> = {
+        const kindLabelMap: Record<'ts' | 'ts-read' | 'sol' | 'sol-current' | 'opt-current' | 'irc', string> = {
           ts: 'TS（当前帧坐标）',
           'ts-read': 'TS（readfc）',
           sol: 'Sol（read方法）',
           'sol-current': 'Sol（当前帧坐标）',
+          'opt-current': '继续优化（继承原任务）',
           irc: 'IRC',
         };
         const detail = [
@@ -2102,7 +2142,6 @@ export function showLogPanel(
             </div>
             <div id="tabNext" class="tab-panel">
               <div class="next-group">
-                <div class="next-group-title">常规后续任务</div>
                 <div class="next-action-blocks">
                   <div class="next-action-block">
                     <div class="next-action-block-title">TS 过渡态搜索</div>
@@ -2158,6 +2197,12 @@ export function showLogPanel(
                     <div class="action-row">
                       <button id="nextSolCurrentBtn">从当前帧进行Sol溶剂化</button>
                       <button id="nextSolBtn">进行Sol溶剂化（read方法）</button>
+                    </div>
+                  </div>
+                  <div class="next-action-block">
+                    <div class="next-action-block-title">继续优化</div>
+                    <div class="action-row">
+                      <button id="nextOptCurrentBtn">从当前帧继续优化</button>
                     </div>
                   </div>
                   <div class="next-action-block">
@@ -2225,6 +2270,7 @@ export function showLogPanel(
     const curveSummary = document.getElementById('curveSummary');
     const nextTsBtn = document.getElementById('nextTsBtn');
     const nextTsReadBtn = document.getElementById('nextTsReadBtn');
+    const nextOptCurrentBtn = document.getElementById('nextOptCurrentBtn');
     const nextSolCurrentBtn = document.getElementById('nextSolCurrentBtn');
     const nextSolBtn = document.getElementById('nextSolBtn');
     const nextIrcBtn = document.getElementById('nextIrcBtn');
@@ -3134,6 +3180,14 @@ export function showLogPanel(
       vscodeApi.postMessage({
         type: 'previewNextInput',
         kind: 'ts-read',
+        frameIndex: getActualFrameIndex(Number(frameSlider.value) || 0),
+      });
+    });
+
+    nextOptCurrentBtn.addEventListener('click', () => {
+      vscodeApi.postMessage({
+        type: 'previewNextInput',
+        kind: 'opt-current',
         frameIndex: getActualFrameIndex(Number(frameSlider.value) || 0),
       });
     });
