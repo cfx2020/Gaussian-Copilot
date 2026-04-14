@@ -25,7 +25,8 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 - 频率模式与振动播放
 - 能量变化曲线（支持点选联动）
 - Overview / Thermo / Next 信息面板
-- Next 面板支持一键生成 TS / Sol / IRC 后续输入
+- Next 面板支持分区式一键生成 TS / Sol / 继续优化 / IRC 后续输入
+- 支持从当前帧直接续跑，并记住上次选择的溶剂与自定义溶剂
 ![alt text](image/PixPin_2026-04-01_00-56-39.jpg)
 
 ### 4) 作业时间线与状态跟踪
