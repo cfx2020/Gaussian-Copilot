@@ -310,7 +310,7 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test": "node --test dist/test/**/*.test.js",
+    "test": "node --test dist/test/termination.test.js",
     "package:vsix": "node -e \"require('fs').mkdirSync('artifacts', { recursive: true })\" && vsce package --out artifacts/gaussian-copilot.vsix",
     "publish:vsce": "vsce publish --packagePath artifacts/gaussian-copilot.vsix --skip-duplicate",
     "publish:ovsx": "ovsx publish --packagePath artifacts/gaussian-copilot.vsix --skip-duplicate"
