@@ -51,13 +51,21 @@ jobs:
           fi
 
       - name: Publish to Visual Studio Marketplace
-        if: ${{ secrets.VSCE_PAT != '' }}
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npm run publish:vsce -- -p "$VSCE_PAT"
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "VSCE_PAT is not configured; skipping Visual Studio Marketplace publish."
+            exit 0
+          fi
+          npm run publish:vsce -- -p "$VSCE_PAT"
 
       - name: Publish to Open VSX
-        if: ${{ secrets.OVSX_PAT != '' }}
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: npm run publish:ovsx
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo "OVSX_PAT is not configured; skipping Open VSX publish."
+            exit 0
+          fi
+          npm run publish:ovsx
