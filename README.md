@@ -127,6 +127,21 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 ```bash
 npm install
 npm run compile
+npm test
+npm run package:vsix
 ```
 
 按 `F5` 启动扩展开发主机。
+
+## CI / Release
+
+- PR 和推送到 `main` / `preview` 时会自动执行编译、测试，并生成 `.vsix` artifact。
+- 推送 tag（如 `v0.6.3`）时会自动：
+  - 构建 `artifacts/gaussian-copilot.vsix`
+  - 上传到对应 GitHub Release
+  - 在配置了 secret 时发布到扩展商店
+
+需要配置的 GitHub Actions secrets：
+
+- `VSCE_PAT`：Visual Studio Marketplace 发布令牌
+- `OVSX_PAT`：Open VSX 发布令牌
