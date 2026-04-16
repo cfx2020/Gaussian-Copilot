@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.5] - 2026-04-17
+
+### Changed
+- README 中的截图链接改为 GitHub 绝对地址，减少 Visual Studio Marketplace 与 GitHub 页面渲染不一致的问题。
+
+### Fixed
+- 修复 Gaussian 日志终止状态解析误判：启动阶段出现的 linker 条目不再被错误识别为失败终止。
+- 为终止状态、帧裁剪、SCAN 曲线与 IRC 曲线补充回归测试，降低看板状态与可视化结果回归风险。
+
 ## [0.6.2] - 2026-04-14
 
 ### Fixed

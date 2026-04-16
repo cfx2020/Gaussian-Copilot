@@ -2,7 +2,7 @@
 
 Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.out` 可视化、批量操作与作业跟踪。
 
-![alt text](image/PixPin_2026-04-01_00-55-39.jpg)
+![Gaussian Copilot overview](https://raw.githubusercontent.com/cfx2020/Gaussian-Copilot/main/image/PixPin_2026-04-01_00-55-39.jpg)
 
 ## Why Gaussian Copilot
 
@@ -27,7 +27,7 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 - Overview / Thermo / Next 分区信息面板
 - 终止状态解析：区分正常结束、报错结束与运行中，并在工具栏/状态区展示
 - 右侧面板与工具栏样式优化：更清晰的 glass 风格、按钮对比度与状态提示
-![alt text](image/PixPin_2026-04-01_00-56-39.jpg)
+![Gaussian output visualization](https://raw.githubusercontent.com/cfx2020/Gaussian-Copilot/main/image/PixPin_2026-04-01_00-56-39.jpg)
 
 #### Next 面板后续任务
 - 分区式后续输入生成：
@@ -41,7 +41,7 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
   - 优先继承同目录同名 `.gjf` 的原始 route，适用于 TS / fix / opt 等任务中途续跑
 - 支持 `从当前帧进行Sol溶剂化` 与 `read` 方法分开选择
 - 记住上次选择的溶剂；自定义溶剂也会自动恢复
-![alt text](image/PixPin_2026-04-14_13-45-57.jpg)
+![Next panel workflows](https://raw.githubusercontent.com/cfx2020/Gaussian-Copilot/main/image/PixPin_2026-04-14_13-45-57.jpg)
 
 ### 4) 作业时间线与状态跟踪
 - 按时间批次分组显示提交记录
@@ -49,13 +49,13 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 - 状态显示：排队中 / 运行中 / 已完成 / 失败 / 已取消
 - 失败作业可显示原因摘要（如 L9999、SCF 不收敛等）
 - 支持杀作业、重新提交选中 `.gjf`、删除单条、清理已结束作业
-![alt text](image/PixPin_2026-04-01_00-58-56.jpg)
+![Job dashboard timeline](https://raw.githubusercontent.com/cfx2020/Gaussian-Copilot/main/image/PixPin_2026-04-01_00-58-56.jpg)
 
 ### 5) 作业结果快速定位
 - 单击作业项即可跳转对应 `.log/.out`
 - 作业右键可直接“可视化对应log/out”
 - 作业右键支持“可视化选中log/out”“打开选中gjf”“下载选中log/out”
-![alt text](image/PixPin_2026-04-01_00-59-31.jpg)
+![Job result actions](https://raw.githubusercontent.com/cfx2020/Gaussian-Copilot/main/image/PixPin_2026-04-01_00-59-31.jpg)
 
 ## 🚀 Quick Start
 
@@ -136,7 +136,7 @@ npm run package:vsix
 ## CI / Release
 
 - PR 和推送到 `main` / `preview` 时会自动执行编译、测试，并生成 `.vsix` artifact。
-- 推送 tag（如 `v0.6.3`）时会自动：
+- 推送 tag（如 `v0.6.5`）时会自动：
   - 构建 `artifacts/gaussian-copilot.vsix`
   - 上传到对应 GitHub Release
   - 在配置了 secret 时发布到扩展商店
