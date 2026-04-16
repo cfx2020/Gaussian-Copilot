@@ -10,9 +10,14 @@ export function classifyGaussianTermination(content: string): GaussianTerminatio
     return { status: 'normal' };
   }
 
-  const linkerMatch = content.match(/\bl(\d+)\.exe\b/i);
-  if (linkerMatch?.[1]) {
-    return { status: 'error', reason: `L${linkerMatch[1]}` };
+  const errorLinkerMatch = content.match(/error termination via lnk1e in .*?\bl(\d+)\.exe\b/i);
+  if (errorLinkerMatch?.[1]) {
+    return { status: 'error', reason: `L${errorLinkerMatch[1]}` };
+  }
+
+  const processedByLinkMatch = content.match(/error termination request processed by link\s+(\d+)/i);
+  if (processedByLinkMatch?.[1]) {
+    return { status: 'error', reason: `L${processedByLinkMatch[1]}` };
   }
 
   if (/segmentation fault/i.test(content)) {
