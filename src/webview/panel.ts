@@ -628,6 +628,7 @@ export function showLogPanel(
   const baseAtoms = summary.frames.length > 0 ? summary.frames[summary.frames.length - 1].atoms : [];
   const tsIntermediateCapability = resolveTsIntermediateCapability(summary);
   const payload = JSON.stringify({
+    sourceFileExt: path.extname(sourceLogPath).toLowerCase(),
     frameXyz,
     baseAtoms,
     frequencies: summary.frequencies,
@@ -2121,7 +2122,7 @@ export function showLogPanel(
         <span>2个原子=键长，3个=键角，4个=二面角</span>
       </div>
 
-      <div id="infoDrawer" class="card info-drawer">
+      <div id="infoDrawer" class="card info-drawer collapsed">
         <div class="info-drawer-content">
           <div class="info-drawer-tabs">
             <button id="tabOverviewBtn" class="tab-btn active">Overview</button>
@@ -2293,6 +2294,8 @@ export function showLogPanel(
     const measurementInfo = document.getElementById('measurementInfo');
     const toolbarStatus = document.getElementById('toolbarStatus');
     const normalizedCalculationType = String(data.overview?.calculationType || '').toUpperCase();
+    const sourceFileExt = String(data.sourceFileExt || '').toLowerCase();
+    const isXyzSource = sourceFileExt === '.xyz' || normalizedCalculationType.startsWith('XYZ');
     const ircFrameOrder = normalizedCalculationType === 'IRC'
       ? data.curves
         .filter((point) => point.type === 'irc' && Number.isFinite(point.frameIndex))
@@ -2807,6 +2810,13 @@ export function showLogPanel(
         return;
       }
 
+      if (isXyzSource) {
+        toolbarStatus.textContent = (data.frameXyz || []).length > 1 ? 'XYZ trajectory' : 'XYZ structure';
+        toolbarStatus.classList.add('ok');
+        toolbarStatus.classList.remove('running', 'warn');
+        return;
+      }
+
       const status = data.terminationStatus || (data.normalTermination ? 'normal' : 'running');
       const label = status === 'normal'
         ? 'Normal termination'
@@ -2861,7 +2871,12 @@ export function showLogPanel(
 
     function renderOverview() {
       const o = data.overview || {};
-      const fileType = String(${JSON.stringify(title)}).toLowerCase().endsWith('.out') ? '.out' : '.log';
+      const fileNameLower = String(${JSON.stringify(title)}).toLowerCase();
+      const fileType = fileNameLower.endsWith('.out')
+        ? '.out'
+        : fileNameLower.endsWith('.xyz')
+          ? '.xyz'
+          : '.log';
       const basisShown = o.basisSet || data.basis;
       overviewTable.innerHTML = [
         tableRow('File Type', fileType),
@@ -2870,7 +2885,7 @@ export function showLogPanel(
         tableRow('Basis Set', basisShown),
         tableRow('Charge', o.charge),
         tableRow('Spin', o.multiplicity === 1 ? 'Singlet' : (o.multiplicity === 2 ? 'Doublet' : (o.multiplicity === 3 ? 'Triplet' : o.multiplicity))),
-        tableRow('E(SCF)', o.electronicEnergy, 'Hartree'),
+        tableRow(isXyzSource ? 'Energy' : 'E(SCF)', o.electronicEnergy, 'Hartree'),
         tableRow('Imaginary Freq', o.imaginaryFreqCount),
         tableRow('Dipole Moment', o.dipoleMoment, 'Debye'),
         tableRow('Polarizability', o.polarizability, 'Bohr^3'),
@@ -3158,6 +3173,15 @@ export function showLogPanel(
     renderThermo();
     renderToolbarStatus();
     applySavedSolventSelection();
+    if (isXyzSource) {
+      [nextTsReadBtn, nextSolBtn, nextIrcBtn].forEach((button) => {
+        if (!button) {
+          return;
+        }
+        button.disabled = true;
+        button.title = 'XYZ 文件没有可复用的 checkpoint/read 数据';
+      });
+    }
 
     // 右侧面板默认隐藏，但Overview标签默认active（展开时直接看到PES）
     tabOverview.classList.add('active');
@@ -3319,15 +3343,17 @@ export function showLogPanel(
     const tooltipBg = (style.getPropertyValue('--vscode-editorWidget-background') || '#111827').trim();
     const accentStrong = (style.getPropertyValue('--gc-accent-strong') || '#1d8fa3').trim();
     const accentMarker = (style.getPropertyValue('--gc-danger') || '#f07f59').trim();
-    const curveTypeLabelMap = { opt: 'opt', scan: 'scan', irc: 'irc' };
-    const curveTitleMap = { opt: '', scan: '', irc: '' };
+    const curveTypeLabelMap = { opt: 'opt', scan: 'scan', irc: 'irc', xyz: 'xyz' };
+    const curveTitleMap = { opt: '', scan: '', irc: '', xyz: '' };
     const sharedCurveColor = accentStrong;
-    const curveColorMap = { opt: sharedCurveColor, scan: sharedCurveColor, irc: sharedCurveColor };
-    const preferredCurveTypes = normalizedCalculationType === 'IRC'
-      ? ['irc']
-      : normalizedCalculationType === 'SCAN'
-        ? ['scan']
-        : ['opt'];
+    const curveColorMap = { opt: sharedCurveColor, scan: sharedCurveColor, irc: sharedCurveColor, xyz: sharedCurveColor };
+    const preferredCurveTypes = isXyzSource
+      ? ['xyz']
+      : normalizedCalculationType === 'IRC'
+        ? ['irc']
+        : normalizedCalculationType === 'SCAN'
+          ? ['scan']
+          : ['opt'];
     const availableCurveTypes = preferredCurveTypes.filter((type) => data.curves.some((point) => point.type === type));
     let activeCurveType = availableCurveTypes[0] || 'opt';
     let activeCurveData = [];
@@ -3352,7 +3378,7 @@ export function showLogPanel(
       }
 
       const ordered = raw.slice();
-      if (type === 'scan' || type === 'irc') {
+      if (type === 'scan' || type === 'irc' || type === 'xyz') {
         ordered.sort((left, right) => {
           const leftCoord = Number.isFinite(left.coordinate) ? Number(left.coordinate) : Number(left.index);
           const rightCoord = Number.isFinite(right.coordinate) ? Number(right.coordinate) : Number(right.index);
@@ -3364,7 +3390,7 @@ export function showLogPanel(
       const sampled = samplePoints(ordered, 600);
       return sampled.map((item) => ({
         value: [
-          (type === 'scan' || type === 'irc') && Number.isFinite(item.point.coordinate)
+          (type === 'scan' || type === 'irc' || type === 'xyz') && Number.isFinite(item.point.coordinate)
             ? Number(item.point.coordinate)
             : item.point.index,
           (item.point.energy - minEnergy) * 627.509,
@@ -3398,12 +3424,12 @@ export function showLogPanel(
       const min = Math.min(...xValues);
       const max = Math.max(...xValues);
       if (min === max) {
-        const singlePad = type === 'opt' ? 0.5 : 0.1;
+        const singlePad = type === 'opt' || type === 'xyz' ? 0.5 : 0.1;
         return { min: min - singlePad, max: max + singlePad };
       }
 
       const span = max - min;
-      const pad = type === 'opt'
+      const pad = type === 'opt' || type === 'xyz'
         ? Math.max(span * 0.03, 0.5)
         : Math.max(span * 0.05, 0.08);
       return {
@@ -3512,12 +3538,16 @@ export function showLogPanel(
             const abs = point.absEnergy != null ? point.absEnergy : '--';
             const header = activeCurveType === 'irc'
               ? ('Path ' + (point.pathNumber != null ? point.pathNumber : '--') + ', Point ' + (point.pointNumber != null ? point.pointNumber : idx))
-              : (curveTypeLabelMap[activeCurveType] + ': ' + (point.pointNumber != null ? point.pointNumber : idx));
+              : activeCurveType === 'xyz'
+                ? ('Frame ' + (point.pointNumber != null ? point.pointNumber : idx))
+                : (curveTypeLabelMap[activeCurveType] + ': ' + (point.pointNumber != null ? point.pointNumber : idx));
             return activeCurveType === 'irc'
               ? (header + '<br/>IRC: ' + (point.coordinate != null ? point.coordinate.toFixed(5) : '--') + '<br/>ΔE (kcal/mol): ' + de + '<br/>E (Hartree): ' + abs)
               : activeCurveType === 'scan'
                 ? (header + '<br/>Scan coordinate: ' + (point.coordinate != null ? point.coordinate.toFixed(5) : '--') + '<br/>ΔE (kcal/mol): ' + de + '<br/>E (Hartree): ' + abs)
-                : (header + '<br/>ΔE (kcal/mol): ' + de + '<br/>E (Hartree): ' + abs);
+                : activeCurveType === 'xyz'
+                  ? (header + '<br/>ΔE (kcal/mol): ' + de + '<br/>E (Hartree): ' + abs)
+                  : (header + '<br/>ΔE (kcal/mol): ' + de + '<br/>E (Hartree): ' + abs);
           }
         },
         grid: {
@@ -3532,7 +3562,7 @@ export function showLogPanel(
           scale: true,
           min: xDomain.min,
           max: xDomain.max,
-          splitNumber: activeCurveType === 'opt' ? 5 : 6,
+          splitNumber: activeCurveType === 'opt' || activeCurveType === 'xyz' ? 5 : 6,
           axisLabel: {
             color: fg,
             fontSize: 11,
@@ -3540,7 +3570,9 @@ export function showLogPanel(
             margin: 7,
             formatter: (value) => activeCurveType === 'opt'
               ? formatAxisNumber(Number(value), 0)
-              : formatAxisNumber(Number(value), 1),
+              : activeCurveType === 'xyz'
+                ? formatAxisNumber(Number(value), 0)
+                : formatAxisNumber(Number(value), 1),
           },
           axisLine: { lineStyle: { color: border } },
           splitLine: { lineStyle: { color: border, opacity: 0.45 } },

@@ -1,6 +1,6 @@
 # 🧪 Gaussian Copilot
 
-Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.out` 可视化、批量操作与作业跟踪。
+Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.out/.xyz` 可视化、批量操作与作业跟踪。
 
 ![Gaussian Copilot overview](https://raw.githubusercontent.com/cfx2020/Gaussian-Copilot/main/image/PixPin_2026-04-01_00-55-39.jpg)
 
@@ -13,15 +13,16 @@ Gaussian 工作流增强扩展：在 VS Code 中完成 `.gjf` 提交、`.log/.ou
 ### 1) 一键提交与可视化
 - 编辑器右上角：
   - 打开 `.gjf` 时显示 **提交此gjf**
-  - 打开 `.log/.out` 时显示 **可视化此log**
+  - 打开 `.log/.out/.xyz` 时显示 **可视化此log/out/xyz**
 
 ### 2) 文件列表批量操作
 - 在资源管理器中多选文件后右键：
   - **Gaussian Copilot: 提交选中gjf文件**
-  - **Gaussian Copilot: 可视化选中log文件**
+  - **Gaussian Copilot: 可视化选中log/out/xyz文件**
 
 ### 3) Gaussian 输出可视化
 - 结构帧浏览与 3D 交互
+- `.xyz` 单结构与多帧轨迹浏览；comment 行包含 `Energy = ...` 时显示能量曲线并支持点选联动
 - 频率模式与振动播放
 - 能量变化曲线（支持点选联动）
 - Overview / Thermo / Next 分区信息面板
