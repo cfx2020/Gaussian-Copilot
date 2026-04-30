@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { parseGaussianLog } from '../parser/gaussianLogParser';
 import { classifyGaussianTermination } from '../parser/termination';
+import { parseXyzFile } from '../parser/xyzParser';
 
 async function writeTempLog(name: string, content: string): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), 'gaussian-copilot-'));
@@ -276,6 +277,62 @@ test('parseGaussianLog builds IRC curves from point annotations and reaction coo
       pointNumber: 1,
       pathNumber: 1,
       coordinate: 0.1234,
+    },
+  ]);
+});
+
+test('parseXyzFile parses a single XYZ structure with a blank comment line', async () => {
+  const filePath = await writeTempLog('single.xyz', `
+3
+
+C 0.000000 0.000000 0.000000
+H 0.000000 0.000000 1.089000
+H 1.026719 0.000000 -0.363000
+`);
+  const summary = await parseXyzFile(filePath, 10);
+
+  assert.equal(summary.frames.length, 1);
+  assert.equal(summary.frames[0]?.atoms.length, 3);
+  assert.equal(summary.frames[0]?.atoms[0]?.atomicNumber, 6);
+  assert.equal(summary.overview.calculationType, 'XYZ');
+  assert.deepEqual(summary.curves, []);
+});
+
+test('parseXyzFile parses multi-frame XYZ energy comments as a trajectory curve', async () => {
+  const filePath = await writeTempLog('trajectory.xyz', `
+1
+Image 0 Energy = -1.000000
+H 0.000000 0.000000 0.000000
+1
+Image 1 Energy = -2.000000
+H 0.000000 0.000000 1.000000
+1
+Image 2 Energy = -3.000000
+H 0.000000 0.000000 2.000000
+`);
+  const summary = await parseXyzFile(filePath, 2);
+
+  assert.equal(summary.frames.length, 2);
+  assert.equal(summary.frames[0]?.atoms[0]?.z, 1);
+  assert.equal(summary.frames[1]?.atoms[0]?.z, 2);
+  assert.equal(summary.overview.calculationType, 'XYZ TRAJECTORY');
+  assert.deepEqual(summary.scfEnergies, [-1, -2, -3]);
+  assert.deepEqual(summary.curves, [
+    {
+      index: 1,
+      energy: -2,
+      type: 'xyz',
+      frameIndex: 0,
+      pointNumber: 1,
+      coordinate: 1,
+    },
+    {
+      index: 2,
+      energy: -3,
+      type: 'xyz',
+      frameIndex: 1,
+      pointNumber: 2,
+      coordinate: 2,
     },
   ]);
 });

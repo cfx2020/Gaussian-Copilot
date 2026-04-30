@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import { getSettings, mergeTemplates } from './config/settings';
 import { initDiagnostics, logError, logInfo } from './logging/diagnostics';
 import { parseGaussianLog } from './parser/gaussianLogParser';
+import { parseXyzFile } from './parser/xyzParser';
 import { createSubmitter } from './submission/submitter';
 import { builtinTemplates } from './templates/builtinTemplates';
 import { renderTemplate } from './templates/templateEngine';
@@ -37,7 +38,7 @@ function normalizeSelection(primary?: vscode.Uri, selected?: vscode.Uri[]): vsco
 
 function isOutputFile(uri: vscode.Uri): boolean {
   const ext = path.extname(uri.fsPath).toLowerCase();
-  return ext === '.log' || ext === '.out';
+  return ext === '.log' || ext === '.out' || ext === '.xyz';
 }
 
 function isInputFile(uri: vscode.Uri): boolean {
@@ -318,14 +319,16 @@ async function handleVisualize(uri?: vscode.Uri): Promise<void> {
   }
 
   const ext = path.extname(target.fsPath).toLowerCase();
-  if (ext !== '.log' && ext !== '.out') {
-    warn('当前文件不是 .log 或 .out。');
+  if (ext !== '.log' && ext !== '.out' && ext !== '.xyz') {
+    warn('当前文件不是 .log、.out 或 .xyz。');
     return;
   }
 
   const settings = getSettings();
-  logInfo(`Parsing log file: ${target.fsPath}`);
-  const summary = await parseGaussianLog(target.fsPath, settings.parser.maxFrames);
+  logInfo(`Parsing visualization file: ${target.fsPath}`);
+  const summary = ext === '.xyz'
+    ? await parseXyzFile(target.fsPath, settings.parser.maxFrames)
+    : await parseGaussianLog(target.fsPath, settings.parser.maxFrames);
   showLogPanel(
     (globalThis as unknown as { extensionContext: vscode.ExtensionContext }).extensionContext,
     target.fsPath,
@@ -436,7 +439,7 @@ async function handleSubmit(context: vscode.ExtensionContext, jobsProvider: JobT
 async function handleBatchVisualize(selection: vscode.Uri[]): Promise<void> {
   const targets = selection.filter(isOutputFile);
   if (!targets.length) {
-    warn('未选中 .log 或 .out 文件。');
+    warn('未选中 .log、.out 或 .xyz 文件。');
     return;
   }
 
@@ -451,7 +454,7 @@ async function handleBatchVisualize(selection: vscode.Uri[]): Promise<void> {
     },
   );
 
-  info(`已处理 ${targets.length} 个输出文件。`);
+  info(`已处理 ${targets.length} 个可视化文件。`);
 }
 
 async function handleBatchSubmit(context: vscode.ExtensionContext, jobsProvider: JobTreeProvider, selection: vscode.Uri[]): Promise<void> {

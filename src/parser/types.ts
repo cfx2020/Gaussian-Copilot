@@ -24,7 +24,7 @@ export interface FrequencyMode {
 export interface EnergyPoint {
   index: number;
   energy: number;
-  type: 'opt' | 'scan' | 'irc';
+  type: 'opt' | 'scan' | 'irc' | 'xyz';
   frameIndex?: number;
   pointNumber?: number;
   pathNumber?: number;
