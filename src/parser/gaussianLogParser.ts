@@ -1,6 +1,8 @@
 import * as fs from 'fs/promises';
+import * as path from 'path';
 import { Atom, EnergyPoint, Frame, FrequencyMode, GaussianSummary, OverviewInfo, ThermoInfo } from './types';
 import { classifyGaussianTermination } from './termination';
+import { parseXyzFile } from './xyzParser';
 
 function parseFloatGaussianToken(token: string): number {
   return Number(token.replace(/d/i, 'e'));
@@ -43,11 +45,171 @@ function parseFrequencyBlock(lines: string[], startIndex: number, values: number
   return { modes, nextIndex: i - 1 };
 }
 
+function parseMapleFrequencyValues(lines: string[]): number[] {
+  const values: number[] = [];
+  for (const line of lines) {
+    const match = line.match(/^\s*(\d+):\s*(-?\d+(?:\.\d*)?(?:[DdEe][+-]?\d+)?)\s+cm\*\*-1\b/i);
+    if (!match) {
+      continue;
+    }
+
+    const index = Number(match[1]);
+    const value = parseFloatGaussianToken(match[2]);
+    if (Number.isInteger(index) && index >= 0 && Number.isFinite(value)) {
+      values[index] = value;
+    }
+  }
+
+  return values.filter((value) => Number.isFinite(value));
+}
+
+function parseMapleNormalModeHeader(line: string, modeCount: number): number[] | undefined {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const tokens = trimmed.split(/\s+/);
+  if (!tokens.length || !tokens.every((token) => /^\d+$/.test(token))) {
+    return undefined;
+  }
+
+  const indexes = tokens.map((token) => Number(token));
+  if (!indexes.every((index) => Number.isInteger(index) && index >= 0 && index < modeCount)) {
+    return undefined;
+  }
+
+  return indexes;
+}
+
+function parseMapleNormalModes(lines: string[], frequencyValues: number[]): FrequencyMode[] {
+  const modes: FrequencyMode[] = frequencyValues.map((value) => ({ value, vectors: [] }));
+  if (!modes.length) {
+    return [];
+  }
+
+  const normalModeStart = lines.findIndex((line) => /^\s*NORMAL MODES\s*$/i.test(line));
+  if (normalModeStart < 0) {
+    return modes;
+  }
+
+  const flatComponents: number[][] = modes.map(() => []);
+  let i = normalModeStart + 1;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/Frequency analysis completed/i.test(line) || /^\s*=+\s*$/.test(line)) {
+      break;
+    }
+
+    const modeIndexes = parseMapleNormalModeHeader(line, modes.length);
+    if (!modeIndexes) {
+      i += 1;
+      continue;
+    }
+
+    i += 1;
+    while (i < lines.length) {
+      const row = lines[i].trim();
+      if (!row) {
+        break;
+      }
+
+      const cols = row.split(/\s+/);
+      if (cols.length < modeIndexes.length + 1 || !/^\d+$/.test(cols[0])) {
+        break;
+      }
+
+      const componentIndex = Number(cols[0]);
+      const values = cols.slice(1, modeIndexes.length + 1).map(parseFloatGaussianToken);
+      if (!Number.isInteger(componentIndex) || !values.every((value) => Number.isFinite(value))) {
+        break;
+      }
+
+      for (let modeOffset = 0; modeOffset < modeIndexes.length; modeOffset += 1) {
+        flatComponents[modeIndexes[modeOffset]][componentIndex] = values[modeOffset];
+      }
+      i += 1;
+    }
+  }
+
+  for (let modeIndex = 0; modeIndex < modes.length; modeIndex += 1) {
+    const components = flatComponents[modeIndex];
+    const vectors = [];
+    for (let componentIndex = 0; componentIndex + 2 < components.length; componentIndex += 3) {
+      const x = components[componentIndex];
+      const y = components[componentIndex + 1];
+      const z = components[componentIndex + 2];
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+        continue;
+      }
+      vectors.push({ x, y, z });
+    }
+    modes[modeIndex].vectors = vectors;
+  }
+
+  return modes;
+}
+
+function parseMapleXyzDirective(content: string): { charge?: number; multiplicity?: number; xyzPath?: string } | undefined {
+  const lines = content.split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(/^\s*XYZ\s+(-?\d+)\s+(\d+)\s+(.+?)\s*$/i);
+    if (!match) {
+      continue;
+    }
+
+    const rawPath = match[3].trim().replace(/^["']|["']$/g, '');
+    return {
+      charge: Number(match[1]),
+      multiplicity: Number(match[2]),
+      xyzPath: rawPath || undefined,
+    };
+  }
+
+  return undefined;
+}
+
+async function parseMapleCompanionXyzFrame(
+  filePath: string,
+  maxFrames: number,
+): Promise<{ frame?: Frame; charge?: number; multiplicity?: number }> {
+  const parsed = path.parse(filePath);
+  const companionInputPath = path.join(parsed.dir, `${parsed.name}.inp`);
+  try {
+    const inputContent = await fs.readFile(companionInputPath, 'utf8');
+    const directive = parseMapleXyzDirective(inputContent);
+    if (!directive?.xyzPath) {
+      return {};
+    }
+
+    const xyzPath = path.isAbsolute(directive.xyzPath)
+      ? directive.xyzPath
+      : path.join(parsed.dir, directive.xyzPath);
+    const xyzSummary = await parseXyzFile(xyzPath, maxFrames);
+    const frame = xyzSummary.frames[0]
+      ? { step: 0, atoms: xyzSummary.frames[0].atoms }
+      : undefined;
+    return {
+      frame,
+      charge: Number.isFinite(directive.charge) ? directive.charge : undefined,
+      multiplicity: Number.isFinite(directive.multiplicity) ? directive.multiplicity : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
 export async function parseGaussianLog(filePath: string, maxFrames: number): Promise<GaussianSummary> {
   const content = await fs.readFile(filePath, 'utf8');
   const lines = content.split(/\r?\n/);
   const termination = classifyGaussianTermination(content);
   const terminationReason = termination.reason;
+  const isMapleFrequencyOutput = /VIBRATIONAL FREQUENCIES/i.test(content) && /NORMAL MODES/i.test(content);
+  const mapleFrequencyValues = isMapleFrequencyOutput ? parseMapleFrequencyValues(lines) : [];
+  const mapleFrequencies = parseMapleNormalModes(lines, mapleFrequencyValues);
+  const mapleCompanion = mapleFrequencyValues.length
+    ? await parseMapleCompanionXyzFrame(filePath, maxFrames)
+    : {};
 
   const frames: Frame[] = [];
   const frequencies: FrequencyMode[] = [];
@@ -58,7 +220,7 @@ export async function parseGaussianLog(filePath: string, maxFrames: number): Pro
 
   let basis: string | undefined;
   let freeEnergy: number | undefined;
-  let normalTermination = false;
+  let normalTermination = termination.status === 'normal';
   let methodFromScf: string | undefined;
   let basisFromRoute: string | undefined;
   let calculationType: string | undefined;
@@ -295,6 +457,24 @@ export async function parseGaussianLog(filePath: string, maxFrames: number): Pro
       imaginaryFreqCount = Number(imagMatch[1]);
     }
 
+    const mapleImagMatch = line.match(/Imaginary frequencies.*?:\s*(\d+)/i);
+    if (mapleImagMatch) {
+      imaginaryFreqCount = Number(mapleImagMatch[1]);
+    }
+
+    const mapleTaskMatch = line.match(/^\s*Task:\s*(\S+)/i);
+    if (mapleTaskMatch) {
+      const task = mapleTaskMatch[1].toUpperCase();
+      if (!calculationType && task === 'FREQ') {
+        calculationType = 'FREQ';
+      }
+    }
+
+    const mapleModelMatch = line.match(/^\s*model\s*:\s*(\S+)/i);
+    if (mapleModelMatch && !methodFromScf) {
+      methodFromScf = mapleModelMatch[1];
+    }
+
     const tpMatch = line.match(/Temperature\s+(-?\d+\.\d+)\s+Kelvin\.\s+Pressure\s+(-?\d+\.\d+)\s+Atm\./i);
     if (tpMatch) {
       temperatureK = Number(tpMatch[1]);
@@ -379,7 +559,7 @@ export async function parseGaussianLog(filePath: string, maxFrames: number): Pro
       i = Math.max(i, parsed.nextIndex);
     }
 
-    if (/Normal termination of Gaussian/i.test(line)) {
+    if (/Frequency analysis completed/i.test(line)) {
       normalTermination = true;
     }
 
@@ -404,6 +584,23 @@ export async function parseGaussianLog(filePath: string, maxFrames: number): Pro
         currentStep += 1;
       }
     }
+  }
+
+  if (!frequencies.length && mapleFrequencies.length) {
+    frequencies.push(...mapleFrequencies);
+  }
+  if (!frames.length && mapleCompanion.frame?.atoms.length) {
+    frames.push(mapleCompanion.frame);
+    currentStep += 1;
+  }
+  if (charge === undefined && mapleCompanion.charge !== undefined) {
+    charge = mapleCompanion.charge;
+  }
+  if (multiplicity === undefined && mapleCompanion.multiplicity !== undefined) {
+    multiplicity = mapleCompanion.multiplicity;
+  }
+  if (!calculationType && mapleFrequencyValues.length) {
+    calculationType = 'FREQ';
   }
 
   const clippedFrames = frames.slice(-maxFrames);

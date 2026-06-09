@@ -85,6 +85,41 @@ test('classifyGaussianTermination prefers normal termination over earlier error 
   });
 });
 
+test('classifyGaussianTermination treats Link1 continuation after normal termination as running', () => {
+  const content = `
+ Entering Gaussian System, Link 0=g16
+ #p opt b3lyp/6-31g(d)
+ Job cpu time:       0 days  1 hours  0 minutes  0.0 seconds.
+ Normal termination of Gaussian 16 at Tue Apr 14 20:05:00 2026.
+
+ Link1: Proceeding to internal job step number  2.
+ #p freq b3lyp/6-31g(d) geom=allcheck guess=read
+ Entering Link 1 = /opt/gaussian/g16/l1.exe PID=12345.
+ (Enter /opt/gaussian/g16/l301.exe)
+ `;
+
+  assert.deepEqual(classifyGaussianTermination(content), {
+    status: 'running',
+  });
+});
+
+test('classifyGaussianTermination accepts completed Link1 jobs after final normal termination', () => {
+  const content = `
+ Entering Gaussian System, Link 0=g16
+ #p opt b3lyp/6-31g(d)
+ Normal termination of Gaussian 16 at Tue Apr 14 20:05:00 2026.
+
+ Link1: Proceeding to internal job step number  2.
+ #p freq b3lyp/6-31g(d) geom=allcheck guess=read
+ Entering Link 1 = /opt/gaussian/g16/l1.exe PID=12345.
+ Normal termination of Gaussian 16 at Tue Apr 14 21:05:00 2026.
+ `;
+
+  assert.deepEqual(classifyGaussianTermination(content), {
+    status: 'normal',
+  });
+});
+
 test('classifyGaussianTermination detects segmentation faults', () => {
   const content = `
  File lengths (MBytes):  RWF=      12 Int=      0 D2E=      0 Chk=      1 Scr=      1
@@ -151,6 +186,25 @@ test('parseGaussianLog reports normal termination even when earlier error marker
   assert.equal(summary.normalTermination, true);
   assert.equal(summary.terminationStatus, 'normal');
   assert.equal(summary.terminationReason, undefined);
+});
+
+test('parseGaussianLog reports running while a Link1 frequency step follows an opt normal termination', async () => {
+  const filePath = await writeTempLog('link1-running-after-normal.log', `
+ #p opt b3lyp/6-31g(d)
+ ${orientationBlock(0)}
+ SCF Done:  E(RB3LYP) =  -100.100000     A.U. after   1 cycles
+ Job cpu time:       0 days  1 hours  0 minutes  0.0 seconds.
+ Normal termination of Gaussian 16 at Tue Apr 14 20:05:00 2026.
+
+ Link1: Proceeding to internal job step number  2.
+ #p freq b3lyp/6-31g(d) geom=allcheck guess=read
+ Entering Link 1 = /opt/gaussian/g16/l1.exe PID=12345.
+ (Enter /opt/gaussian/g16/l301.exe)
+ `);
+  const summary = await parseGaussianLog(filePath, 10);
+
+  assert.equal(summary.normalTermination, false);
+  assert.equal(summary.terminationStatus, 'running');
 });
 
 test('parseGaussianLog remaps frame indices after clipping old frames', async () => {
@@ -389,5 +443,86 @@ test('parseGaussianLog prefers IRC summary energies while preserving mapped fram
       pathNumber: 1,
       coordinate: 0.1234,
     },
+  ]);
+});
+
+test('parseGaussianLog parses MAPLE frequency output with companion XYZ coordinates', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'gaussian-copilot-maple-'));
+  const outPath = path.join(dir, 'maple_freq.out');
+  await writeFile(path.join(dir, 'maple_freq.inp'), `
+#model=uma(size=uma-s-1p1, task=omol)
+#freq(method=mw, verbose=2, treat_imag_as_real=false)
+
+XYZ 0 3 maple_ts.xyz
+`, 'utf8');
+  await writeFile(path.join(dir, 'maple_ts.xyz'), `
+2
+Image 0 Energy = -1.234
+C 0.000000 0.000000 0.000000
+H 0.000000 0.000000 1.089000
+`, 'utf8');
+  await writeFile(outPath, `
+Task: freq
+model          : uma
+
+Starting frequency analysis calculation, Number of atoms: 2
+Frequency analysis summary:
+  Zero frequencies (|ν| < 5.0 cm⁻¹):    6
+  Imaginary frequencies (ν < -5.0 cm⁻¹): 1
+  Real frequencies (ν > 5.0 cm⁻¹):       0
+
+------------------------------------------------------------
+VIBRATIONAL FREQUENCIES
+------------------------------------------------------------
+
+     0:        0.00 cm**-1
+     1:        0.00 cm**-1
+     2:        0.00 cm**-1
+     3:        0.00 cm**-1
+     4:        0.00 cm**-1
+     5:        0.00 cm**-1
+     6:      -23.49 cm**-1  ***imaginary mode***
+
+------------------------------------------------------------
+NORMAL MODES
+------------------------------------------------------------
+
+These modes are the Cartesian displacements weighted by the diagonal matrix
+
+                 0              1              2              3              4              5
+     0       0.000000       0.000000       0.000000       0.000000       0.000000       0.000000
+     1       0.000000       0.000000       0.000000       0.000000       0.000000       0.000000
+     2       0.000000       0.000000       0.000000       0.000000       0.000000       0.000000
+     3       0.000000       0.000000       0.000000       0.000000       0.000000       0.000000
+     4       0.000000       0.000000       0.000000       0.000000       0.000000       0.000000
+     5       0.000000       0.000000       0.000000       0.000000       0.000000       0.000000
+
+                 6
+     0      -0.014891
+     1      -0.000913
+     2       0.013785
+     3      -0.011887
+     4       0.002962
+     5       0.020810
+
+Frequency analysis completedOutput file: maple_freq.out
+`, 'utf8');
+
+  const summary = await parseGaussianLog(outPath, 10);
+
+  assert.equal(summary.frames.length, 1);
+  assert.equal(summary.frames[0]?.atoms.length, 2);
+  assert.equal(summary.frames[0]?.atoms[0]?.atomicNumber, 6);
+  assert.equal(summary.overview.calculationType, 'FREQ');
+  assert.equal(summary.overview.method, 'uma');
+  assert.equal(summary.overview.charge, 0);
+  assert.equal(summary.overview.multiplicity, 3);
+  assert.equal(summary.overview.imaginaryFreqCount, 1);
+  assert.equal(summary.terminationStatus, 'normal');
+  assert.equal(summary.frequencies.length, 7);
+  assert.equal(summary.frequencies[6]?.value, -23.49);
+  assert.deepEqual(summary.frequencies[6]?.vectors, [
+    { x: -0.014891, y: -0.000913, z: 0.013785 },
+    { x: -0.011887, y: 0.002962, z: 0.02081 },
   ]);
 });
