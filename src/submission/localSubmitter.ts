@@ -4,6 +4,10 @@ import * as path from 'path';
 import { GaussianCopilotSettings } from '../config/settings';
 import { JobStatusResult, SchedulerJobSummary, SubmitRequest, SubmitResult, Submitter } from './types';
 
+const SCHEDULER_COMMAND_TIMEOUT_MS = 20_000;
+const JOB_DETAIL_TIMEOUT_MS = 5_000;
+const JOB_DETAIL_CONCURRENCY = 4;
+
 function renderCommand(template: string, req: SubmitRequest): string {
   const dir = path.dirname(req.localFilePath);
   return template
@@ -86,9 +90,14 @@ function buildCommandWithPrelude(command: string, preCommands: string[], shell?:
   };
 }
 
-function executeCommand(command: string, cwd?: string, shell?: string): Promise<{ stdout: string; stderr: string }> {
+function executeCommand(
+  command: string,
+  cwd?: string,
+  shell?: string,
+  timeout?: number,
+): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    exec(command, { cwd, shell }, (error, stdout, stderr) => {
+    exec(command, { cwd, shell, timeout }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(`${error.message}\n${stderr}`.trim()));
         return;
@@ -115,12 +124,17 @@ function shouldRetryWithBash(command: string, message: string): boolean {
   return trimmed.includes('/') || /\.sh(?:\s|$)/i.test(trimmed);
 }
 
-async function runCommand(command: string, cwd?: string, preCommands: string[] = []): Promise<{ stdout: string; stderr: string }> {
+async function runCommand(
+  command: string,
+  cwd?: string,
+  preCommands: string[] = [],
+  timeout?: number,
+): Promise<{ stdout: string; stderr: string }> {
   const shell = process.platform === 'win32' ? undefined : resolveUnixShell();
   const firstRun = buildCommandWithPrelude(command, preCommands, shell);
 
   try {
-    return await executeCommand(firstRun.executableCommand, cwd, firstRun.shell);
+    return await executeCommand(firstRun.executableCommand, cwd, firstRun.shell, timeout);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!shouldRetryWithBash(command, message)) {
@@ -128,7 +142,7 @@ async function runCommand(command: string, cwd?: string, preCommands: string[] =
     }
 
     const retryRun = buildCommandWithPrelude(`bash ${command}`, preCommands, shell);
-    return executeCommand(retryRun.executableCommand, cwd, retryRun.shell);
+    return executeCommand(retryRun.executableCommand, cwd, retryRun.shell, timeout);
   }
 }
 
@@ -238,6 +252,60 @@ function extractFullJobNameFromQstatFull(stdout: string): string | undefined {
   return value || undefined;
 }
 
+function extractWorkDirFromQstatFull(stdout: string): string | undefined {
+  const dirs: string[] = [];
+
+  const addDir = (value: string | undefined): void => {
+    if (!value) {
+      return;
+    }
+    const normalized = value.trim();
+    if (normalized && !dirs.includes(normalized)) {
+      dirs.push(normalized);
+    }
+  };
+
+  const initWorkDirMatch = stdout.match(/\binit_work_dir\s*=\s*([^\r\n]+)/i);
+  if (initWorkDirMatch?.[1]) {
+    addDir(initWorkDirMatch[1]);
+  }
+
+  const variableListMatch = stdout.match(/\bVariable_List\s*=\s*([\s\S]+)/i);
+  if (variableListMatch?.[1]) {
+    const workdirMatch = variableListMatch[1].match(/\bPBS_O_WORKDIR=([^,\r\n]+)/i);
+    if (workdirMatch?.[1]) {
+      addDir(workdirMatch[1]);
+    }
+  }
+
+  const outputPathMatch = stdout.match(/\bOutput_Path\s*=\s*[^:\s]+:([^\r\n]+)/i);
+  if (outputPathMatch?.[1]) {
+    addDir(path.dirname(outputPathMatch[1].trim()));
+  }
+
+  return dirs[0];
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex]);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
+
 async function enrichJobNamesWithQstatFull(
   jobs: SchedulerJobSummary[],
   preCommands: string[],
@@ -246,22 +314,24 @@ async function enrichJobNamesWithQstatFull(
     return jobs;
   }
 
-  const enriched = await Promise.all(jobs.map(async (job) => {
+  const enriched = await mapWithConcurrency(jobs, JOB_DETAIL_CONCURRENCY, async (job) => {
     try {
-      const result = await runCommand(`qstat -f ${job.id}`, undefined, preCommands);
+      const result = await runCommand(`qstat -f ${job.id}`, undefined, preCommands, JOB_DETAIL_TIMEOUT_MS);
       const fullName = extractFullJobNameFromQstatFull(result.stdout);
-      if (!fullName) {
+      const workDir = extractWorkDirFromQstatFull(result.stdout);
+      if (!fullName && !workDir) {
         return job;
       }
       return {
         ...job,
-        name: fullName,
+        name: fullName ?? job.name,
+        workDir,
       };
     } catch {
       // Keep the parsed short name if qstat -f fails for a specific job.
       return job;
     }
-  }));
+  });
 
   return enriched;
 }
@@ -302,7 +372,7 @@ export class LocalSubmitter implements Submitter {
       };
     }
 
-    const result = await runCommand(`qstat -f ${jobId}`, undefined, this.settings.preCommands);
+    const result = await runCommand(`qstat -f ${jobId}`, undefined, this.settings.preCommands, SCHEDULER_COMMAND_TIMEOUT_MS);
     const stateMatch = result.stdout.match(/job_state\s*=\s*([A-Z])/);
     const state = stateMatch ? normalizePbsState(stateMatch[1]) : 'unknown';
 
@@ -328,7 +398,7 @@ export class LocalSubmitter implements Submitter {
 
     let result;
     try {
-      result = await runCommand(`qdel ${jobId}`, undefined, this.settings.preCommands);
+      result = await runCommand(`qdel ${jobId}`, undefined, this.settings.preCommands, SCHEDULER_COMMAND_TIMEOUT_MS);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (isJobMissingInScheduler(message)) {
@@ -361,11 +431,11 @@ export class LocalSubmitter implements Submitter {
     // of long job names. Fallback to -u if -a doesn't work
     let result;
     try {
-      result = await runCommand(`qstat -a -u ${username}`, undefined, this.settings.preCommands);
+      result = await runCommand(`qstat -a -u ${username}`, undefined, this.settings.preCommands, SCHEDULER_COMMAND_TIMEOUT_MS);
     } catch (e) {
       // Fallback to original command if -a is not supported
       try {
-        result = await runCommand(`qstat -u ${username}`, undefined, this.settings.preCommands);
+        result = await runCommand(`qstat -u ${username}`, undefined, this.settings.preCommands, SCHEDULER_COMMAND_TIMEOUT_MS);
       } catch (innerE) {
         const message = innerE instanceof Error ? innerE.message : String(innerE);
         throw new Error(`Failed to query job status: ${message}`);

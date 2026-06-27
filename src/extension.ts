@@ -530,7 +530,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!first || first.contextValue !== 'chemAssistJobItem') {
         return;
       }
-      await jobsProvider.openJobOutput(first);
+      await jobsProvider.openJobOutput(first, { queryScheduler: false });
     }),
   );
 
@@ -607,7 +607,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       if (!uris.length) {
-        warn('未找到对应的 .log/.out 文件。');
+        warn('未找到对应的 .log/.out 文件，或存在多个同名结果无法唯一定位。');
         return;
       }
 
@@ -634,7 +634,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       if (!uris.length) {
-        warn('未找到对应的 .gjf 文件。');
+        warn('未找到对应的 .gjf 文件，或存在多个同名输入无法唯一定位。');
         return;
       }
 
@@ -665,7 +665,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       if (!uris.length) {
-        warn('未找到可重新提交的 .gjf 文件。');
+        warn('未找到可重新提交的 .gjf 文件，或存在多个同名输入无法唯一定位。');
         return;
       }
 
