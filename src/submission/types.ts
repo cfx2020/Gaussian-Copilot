@@ -32,6 +32,7 @@ export interface SchedulerJobSummary {
   id: string;
   name: string;
   state: JobState;
+  workDir?: string;
 }
 
 export interface Submitter {

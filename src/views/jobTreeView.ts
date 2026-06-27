@@ -9,6 +9,8 @@ import { createSubmitter } from '../submission/submitter';
 import { JobState, SubmitMode, SubmitResult } from '../submission/types';
 
 const STORAGE_KEY = 'chemAssist.jobs';
+const DISMISSED_STORAGE_KEY = 'chemAssist.dismissedJobs';
+const DISMISSED_JOB_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 export interface JobRecord {
   id: string;
@@ -19,6 +21,22 @@ export interface JobRecord {
   state: JobState;
   failureReason?: string;
   remotePath?: string;
+  schedulerWorkDir?: string;
+}
+
+interface DismissedJobRecord {
+  id: string;
+  dismissedAt: string;
+}
+
+interface ActiveJobInfo {
+  name: string;
+  state: JobState;
+  workDir?: string;
+}
+
+interface FindFileOptions {
+  queryScheduler: boolean;
 }
 
 interface BatchRecord {
@@ -249,10 +267,13 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
   private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<TreeNode | undefined>();
   readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
   private jobs: JobRecord[] = [];
+  private dismissedJobs: DismissedJobRecord[] = [];
   private timer: NodeJS.Timeout | undefined;
+  private refreshInFlight: Promise<void> | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.jobs = this.context.workspaceState.get<JobRecord[]>(STORAGE_KEY, []);
+    this.dismissedJobs = this.context.workspaceState.get<DismissedJobRecord[]>(DISMISSED_STORAGE_KEY, []);
     this.configureAutoRefresh();
   }
 
@@ -323,12 +344,26 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
       remotePath: result.remotePath,
     };
 
+    this.forgetDismissedJob(result.jobId);
     this.jobs = [record, ...this.jobs].slice(0, 200);
     await this.persist();
     this.refresh();
   }
 
   async refreshStatuses(): Promise<void> {
+    if (this.refreshInFlight) {
+      return this.refreshInFlight;
+    }
+
+    this.refreshInFlight = this.refreshStatusesCore()
+      .finally(() => {
+        this.refreshInFlight = undefined;
+      });
+
+    return this.refreshInFlight;
+  }
+
+  private async refreshStatusesCore(): Promise<void> {
     const submitter = await createSubmitter(this.context);
     const activeJobsById = await this.fetchActiveJobsMap(submitter);
     this.mergeDiscoveredJobs(activeJobsById);
@@ -349,7 +384,7 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
       const active = activeJobsById.get(job.id);
       if (active) {
         const nextName = !job.filePath ? normalizeDiscoveredFileName(active.name) : job.fileName;
-        const nextJob = { ...job, fileName: nextName };
+        const nextJob = { ...job, fileName: nextName, schedulerWorkDir: active.workDir ?? job.schedulerWorkDir };
         const terminal = await this.detectTerminalStateFromOutput(nextJob);
         updated.push(
           terminal
@@ -384,7 +419,7 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
     this.refresh();
   }
 
-  private async fetchActiveJobsMap(submitter: Awaited<ReturnType<typeof createSubmitter>>): Promise<Map<string, { name: string; state: JobState }>> {
+  private async fetchActiveJobsMap(submitter: Awaited<ReturnType<typeof createSubmitter>>): Promise<Map<string, ActiveJobInfo>> {
     const username = this.resolveSchedulerUsername();
     if (!username) {
       return new Map();
@@ -392,7 +427,7 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
 
     try {
       const jobs = await submitter.listUserJobs(username);
-      return new Map(jobs.map((job) => [job.id, { name: job.name, state: job.state }]));
+      return new Map(jobs.map((job) => [job.id, { name: job.name, state: job.state, workDir: job.workDir }]));
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       logError(`Fetch jobs by user failed (${username}): ${message}`);
@@ -400,16 +435,17 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
     }
   }
 
-  private mergeDiscoveredJobs(activeJobsById: Map<string, { name: string; state: JobState }>): void {
+  private mergeDiscoveredJobs(activeJobsById: Map<string, ActiveJobInfo>): void {
     if (!activeJobsById.size) {
       return;
     }
 
     const known = new Set(this.jobs.map((job) => job.id));
+    const dismissed = this.getDismissedJobIds();
     const discovered: JobRecord[] = [];
 
     for (const [id, data] of activeJobsById.entries()) {
-      if (known.has(id)) {
+      if (known.has(id) || dismissed.has(id)) {
         continue;
       }
 
@@ -419,6 +455,7 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
         fileName: normalizeDiscoveredFileName(data.name),
         submittedAt: new Date().toISOString(),
         state: data.state,
+        schedulerWorkDir: data.workDir,
       });
     }
 
@@ -435,6 +472,47 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
     }
 
     return (process.env.USER ?? process.env.LOGNAME ?? process.env.USERNAME ?? '').trim();
+  }
+
+  private getDismissedJobIds(): Set<string> {
+    const now = Date.now();
+    const kept = this.dismissedJobs.filter((entry) => {
+      const dismissedAt = Date.parse(entry.dismissedAt);
+      return Number.isFinite(dismissedAt) && now - dismissedAt < DISMISSED_JOB_TTL_MS;
+    });
+
+    if (kept.length !== this.dismissedJobs.length) {
+      this.dismissedJobs = kept;
+      void this.persistDismissedJobs();
+    }
+
+    return new Set(kept.map((entry) => entry.id));
+  }
+
+  private forgetDismissedJob(id: string): void {
+    const before = this.dismissedJobs.length;
+    this.dismissedJobs = this.dismissedJobs.filter((entry) => entry.id !== id);
+    if (this.dismissedJobs.length !== before) {
+      void this.persistDismissedJobs();
+    }
+  }
+
+  private dismissJobs(jobs: JobRecord[]): void {
+    const now = new Date().toISOString();
+    const ids = new Set(this.dismissedJobs.map((entry) => entry.id));
+    for (const job of jobs) {
+      if (!looksLikePbsJobId(job.id)) {
+        continue;
+      }
+      if (ids.has(job.id)) {
+        this.dismissedJobs = this.dismissedJobs.map((entry) => (
+          entry.id === job.id ? { ...entry, dismissedAt: now } : entry
+        ));
+      } else {
+        this.dismissedJobs.push({ id: job.id, dismissedAt: now });
+        ids.add(job.id);
+      }
+    }
   }
 
   async cancelJob(item: unknown): Promise<void> {
@@ -493,28 +571,34 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
     }
 
     this.jobs = this.jobs.filter((job) => !(job.id === target.id && job.submittedAt === target.submittedAt));
-    await this.persist();
+    this.dismissJobs([target]);
+    await Promise.all([this.persist(), this.persistDismissedJobs()]);
     this.refresh();
   }
 
   async clearFinishedJobs(): Promise<void> {
     const before = this.jobs.length;
+    const finished = this.jobs.filter((job) => ['completed', 'failed', 'cancelled'].includes(job.state));
     this.jobs = this.jobs.filter((job) => !['completed', 'failed', 'cancelled'].includes(job.state));
-    await this.persist();
+    this.dismissJobs(finished);
+    await Promise.all([this.persist(), this.persistDismissedJobs()]);
     this.refresh();
     void vscode.window.showInformationMessage(`已清理 ${before - this.jobs.length} 个已结束作业。`);
   }
 
-  async openJobOutput(item: unknown): Promise<void> {
+  async openJobOutput(
+    item: unknown,
+    options: FindFileOptions = { queryScheduler: true },
+  ): Promise<void> {
     const target = getJobFromUnknown(item);
     if (!target) {
       void vscode.window.showWarningMessage('未识别到作业条目。');
       return;
     }
 
-    const fileUri = await this.resolveOutputFileUri(target);
+    const fileUri = await this.resolveOutputFileUri(target, options);
     if (!fileUri) {
-      void vscode.window.showWarningMessage(`未找到 ${target.fileName} 对应的 .log/.out 文件。`);
+      void vscode.window.showWarningMessage(`未找到 ${target.fileName} 对应的 .log/.out 文件，或存在多个同名结果无法唯一定位。`);
       return;
     }
 
@@ -522,13 +606,16 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
     await vscode.window.showTextDocument(doc, { preview: false });
   }
 
-  async resolveOutputFileUri(item: unknown): Promise<vscode.Uri | undefined> {
+  async resolveOutputFileUri(
+    item: unknown,
+    options: FindFileOptions = { queryScheduler: true },
+  ): Promise<vscode.Uri | undefined> {
     const target = getJobFromUnknown(item);
     if (!target) {
       return undefined;
     }
 
-    const result = await this.findOutputFile(target);
+    const result = await this.findOutputFile(target, options);
     if (result?.linkedPath && target.filePath !== result.linkedPath) {
       this.jobs = this.jobs.map((job) => (
         job.id === target.id && job.submittedAt === target.submittedAt
@@ -547,7 +634,7 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
       return undefined;
     }
 
-    const result = await this.findInputFile(target);
+    const result = await this.findInputFile(target, { queryScheduler: true });
     if (result?.linkedPath && target.filePath !== result.linkedPath) {
       this.jobs = this.jobs.map((job) => (
         job.id === target.id && job.submittedAt === target.submittedAt
@@ -560,7 +647,10 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
     return result?.uri;
   }
 
-  private async findOutputFile(job: JobRecord): Promise<{ uri: vscode.Uri; linkedPath?: string } | undefined> {
+  private async findOutputFile(
+    job: JobRecord,
+    options: FindFileOptions = { queryScheduler: true },
+  ): Promise<{ uri: vscode.Uri; linkedPath?: string } | undefined> {
     const baseName = path.basename(job.fileName, path.extname(job.fileName));
     const exts = ['.log', '.out', '.LOG', '.OUT'];
 
@@ -576,25 +666,30 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
       }
     }
 
-    if (looksLikePbsJobId(job.id)) {
+    const hintDirs = job.schedulerWorkDir ? [job.schedulerWorkDir] : [];
+    if (looksLikePbsJobId(job.id) && options.queryScheduler) {
       try {
         const submitter = await createSubmitter(this.context);
         const status = await submitter.query(job.id);
-        const hintDirs = parseSchedulerHintDirs(status.stdout);
-
-        for (const dir of hintDirs) {
-          for (const ext of exts) {
-            const candidate = path.join(dir, `${baseName}${ext}`);
-            try {
-              await access(candidate);
-              return { uri: vscode.Uri.file(candidate), linkedPath: candidate };
-            } catch {
-            }
+        for (const dir of parseSchedulerHintDirs(status.stdout)) {
+          if (!hintDirs.includes(dir)) {
+            hintDirs.push(dir);
           }
         }
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         logError(`Resolve output by scheduler failed (${job.id}): ${message}`);
+      }
+    }
+
+    for (const dir of hintDirs) {
+      for (const ext of exts) {
+        const candidate = path.join(dir, `${baseName}${ext}`);
+        try {
+          await access(candidate);
+          return { uri: vscode.Uri.file(candidate), linkedPath: candidate };
+        } catch {
+        }
       }
     }
 
@@ -605,24 +700,13 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
     if (found.length === 1) {
       return { uri: found[0], linkedPath: found[0].fsPath };
     }
-
-    const selected = await vscode.window.showQuickPick(
-      found.map((uri) => ({
-        label: path.basename(uri.fsPath),
-        description: vscode.workspace.asRelativePath(uri.fsPath),
-        uri,
-      })),
-      { placeHolder: `找到 ${found.length} 个同名结果，请选择 ${job.fileName} 对应文件` },
-    );
-
-    if (!selected) {
-      return undefined;
-    }
-
-    return { uri: selected.uri, linkedPath: selected.uri.fsPath };
+    return undefined;
   }
 
-  private async findInputFile(job: JobRecord): Promise<{ uri: vscode.Uri; linkedPath?: string } | undefined> {
+  private async findInputFile(
+    job: JobRecord,
+    options: FindFileOptions = { queryScheduler: true },
+  ): Promise<{ uri: vscode.Uri; linkedPath?: string } | undefined> {
     const baseName = path.basename(job.fileName, path.extname(job.fileName));
     const fileName = `${baseName}.gjf`;
 
@@ -635,23 +719,28 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
       }
     }
 
-    if (looksLikePbsJobId(job.id)) {
+    const hintDirs = job.schedulerWorkDir ? [job.schedulerWorkDir] : [];
+    if (looksLikePbsJobId(job.id) && options.queryScheduler) {
       try {
         const submitter = await createSubmitter(this.context);
         const status = await submitter.query(job.id);
-        const hintDirs = parseSchedulerHintDirs(status.stdout);
-
-        for (const dir of hintDirs) {
-          const candidate = path.join(dir, fileName);
-          try {
-            await access(candidate);
-            return { uri: vscode.Uri.file(candidate), linkedPath: candidate };
-          } catch {
+        for (const dir of parseSchedulerHintDirs(status.stdout)) {
+          if (!hintDirs.includes(dir)) {
+            hintDirs.push(dir);
           }
         }
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         logError(`Resolve input by scheduler failed (${job.id}): ${message}`);
+      }
+    }
+
+    for (const dir of hintDirs) {
+      const candidate = path.join(dir, fileName);
+      try {
+        await access(candidate);
+        return { uri: vscode.Uri.file(candidate), linkedPath: candidate };
+      } catch {
       }
     }
 
@@ -662,21 +751,7 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
     if (found.length === 1) {
       return { uri: found[0], linkedPath: found[0].fsPath };
     }
-
-    const selected = await vscode.window.showQuickPick(
-      found.map((uri) => ({
-        label: path.basename(uri.fsPath),
-        description: vscode.workspace.asRelativePath(uri.fsPath),
-        uri,
-      })),
-      { placeHolder: `找到 ${found.length} 个同名输入文件，请选择 ${fileName}` },
-    );
-
-    if (!selected) {
-      return undefined;
-    }
-
-    return { uri: selected.uri, linkedPath: selected.uri.fsPath };
+    return undefined;
   }
 
   private async inferTerminalState(job: JobRecord): Promise<{ state: JobState; reason?: string }> {
@@ -689,7 +764,7 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
       return terminal;
     }
 
-    const output = await this.findOutputFile(job);
+    const output = await this.findOutputFile(job, { queryScheduler: false });
     if (!output) {
       return { state: 'completed' };
     }
@@ -698,7 +773,7 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
   }
 
   private async detectTerminalStateFromOutput(job: JobRecord): Promise<{ state: JobState; reason?: string } | undefined> {
-    const output = await this.findOutputFile(job);
+    const output = await this.findOutputFile(job, { queryScheduler: false });
     if (!output) {
       return undefined;
     }
@@ -738,5 +813,9 @@ export class JobTreeProvider implements vscode.TreeDataProvider<TreeNode>, vscod
 
   private async persist(): Promise<void> {
     await this.context.workspaceState.update(STORAGE_KEY, this.jobs);
+  }
+
+  private async persistDismissedJobs(): Promise<void> {
+    await this.context.workspaceState.update(DISMISSED_STORAGE_KEY, this.dismissedJobs);
   }
 }
